@@ -1,3 +1,5 @@
+"use client"
+
 import MealReviewCard from "../../components/MealReviewCard"
 
 export default function Page() {
