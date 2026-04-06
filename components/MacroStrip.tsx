@@ -1,4 +1,11 @@
-export default function MacroStrip({ meal }) {
+type Meal = {
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+}
+
+export default function MacroStrip({ meal }: { meal: Meal }) {
   return (
     <div className="flex justify-between mt-4 text-center">
       <Macro label="Calories" value={meal.calories} />
@@ -9,7 +16,7 @@ export default function MacroStrip({ meal }) {
   )
 }
 
-function Macro({ label, value }) {
+function Macro({ label, value }: { label: string; value: number }) {
   return (
     <div>
       <div className="text-lg font-semibold">{value || "-"}</div>
