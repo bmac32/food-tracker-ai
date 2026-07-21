@@ -431,15 +431,19 @@ export default function DailySummary(props: Props) {
 
         {/* 🔵 RINGS (NO CARD) */}
        <div
-         className="relative z-0 overflow-hidden"
+         className="relative z-0"
          style={{
            marginTop: `${ringsMarginTop}px`,
            paddingBottom: `${ringsPaddingBottom}px`,
          }}
        >
         {/* AURORA — ambient glow tied to the same ring colors, the
-            signature "premium" moment behind the daily summary */}
-        <div className="absolute -top-10 left-0 right-0 h-[140px] pointer-events-none blur-[38px] opacity-40">
+            signature "premium" moment behind the daily summary.
+            overflow-hidden lives on this div specifically (it's already
+            self-contained within its own -top-10/h-[140px] box) rather
+            than the wrapper above, which was clipping the leftmost/
+            rightmost rings' own glow against the container edge. */}
+        <div className="absolute -top-10 left-0 right-0 h-[140px] pointer-events-none blur-[38px] opacity-40 overflow-hidden">
           <div className="absolute w-28 h-28 rounded-full bg-cal top-0 left-[8%] animate-aurora-1" />
           <div className="absolute w-28 h-28 rounded-full bg-protein top-5 left-[55%] animate-aurora-2" />
           <div className="absolute w-28 h-28 rounded-full bg-carb top-8 left-[30%] animate-aurora-3" />
