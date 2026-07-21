@@ -24,6 +24,7 @@ type Meal = {
 export default function DailySummary(props: Props) {
   const { refreshTrigger, currentDate, setCurrentDate, isCollapsed } = props
   const [meals, setMeals] = useState<Meal[]>([])
+  const [workouts, setWorkouts] = useState<{ calories_burned?: number }[]>([])
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -97,8 +98,33 @@ export default function DailySummary(props: Props) {
     setMeals((data as Meal[]) || [])
   }
 
+  // -------------------------
+  // LOAD WORKOUTS
+  // -------------------------
+  async function loadWorkouts() {
+    const start = new Date(currentDate)
+    start.setHours(0, 0, 0, 0)
+
+    const end = new Date(currentDate)
+    end.setHours(23, 59, 59, 999)
+
+    const { data, error } = await supabase
+      .from("workouts")
+      .select("calories_burned")
+      .gte("created_at", start.toISOString())
+      .lte("created_at", end.toISOString())
+
+    if (error) {
+      console.error("WORKOUTS LOAD ERROR:", error)
+      return
+    }
+
+    setWorkouts(data || [])
+  }
+
   useEffect(() => {
     loadMeals()
+    loadWorkouts()
     loadGoals()
   }, [refreshTrigger, currentDate])
 
@@ -121,9 +147,16 @@ export default function DailySummary(props: Props) {
   { calories: 0, protein: 0, carbs: 0, fat: 0 }
 )
 
+  const caloriesBurned = workouts.reduce(
+    (sum, w) => sum + (Number(w.calories_burned) || 0),
+    0
+  )
+
+  const netCalories = Math.max(0, totals.calories - caloriesBurned)
+
   const progress = {
   calories: goals.calories
-    ? Math.min(totals.calories / goals.calories, 1)
+    ? Math.min(netCalories / goals.calories, 1)
     : 0,
   protein: goals.protein
     ? Math.min(totals.protein / goals.protein, 1)
@@ -305,7 +338,7 @@ const changeDay = (dir: "prev" | "next") => {
           {/* LEFT: EDIT */}
           <button
             onClick={() => setShowModal(true)}
-            className="text-xs text-[#6B7280] hover:text-white transition pl-1"
+            className="text-xs text-[#6B7280] hover:text-white active:scale-95 transition pl-1"
           >
             {goals?.calories ? "Edit" : "Set"}
           </button>
@@ -314,7 +347,7 @@ const changeDay = (dir: "prev" | "next") => {
           <div className="flex items-center gap-3">
             <button
               onClick={() => changeDay("prev")}
-              className="text-[#6B7280] hover:text-white transition"
+              className="text-[#6B7280] hover:text-white active:scale-90 transition"
             >
               ‹
             </button>
@@ -329,7 +362,7 @@ const changeDay = (dir: "prev" | "next") => {
 
             <button
               onClick={() => changeDay("next")}
-              className="text-[#6B7280] hover:text-white transition"
+              className="text-[#6B7280] hover:text-white active:scale-90 transition"
             >
               ›
             </button>
@@ -351,7 +384,7 @@ const changeDay = (dir: "prev" | "next") => {
           
           <Ring
             label="Cal"
-            value={totals.calories}
+            value={netCalories}
             goal={goals.calories}
             progress={animatedProgress.calories}
             type="calories"
@@ -378,12 +411,18 @@ const changeDay = (dir: "prev" | "next") => {
             type="fat"
           />
         </div>
+
+        {caloriesBurned > 0 && (
+          <p className="text-center text-[11px] text-orange-300 mt-2 animate-fade-in">
+            🔥 {caloriesBurned} cal burned today — nice work!
+          </p>
+        )}
       </div>
     </div> {/* CLOSE space-y-4 */}
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-[#171A21] border border-[#232734] rounded-2xl p-6 w-[90%] max-w-sm space-y-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-[#171A21] border border-[#232734] rounded-2xl p-6 w-[90%] max-w-sm space-y-4 animate-fade-scale-in">
 
             <h2 className="text-lg font-semibold">Edit Goals</h2>
 
@@ -392,7 +431,7 @@ const changeDay = (dir: "prev" | "next") => {
               placeholder="Current weight (lbs)"
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
-              className="w-full bg-transparent border border-[#232734] rounded-lg px-3 py-2"
+              className="w-full bg-transparent border border-[#232734] rounded-lg px-3 py-2 outline-none transition focus:border-white/40"
             />
 
             <div className="flex gap-2">
@@ -408,10 +447,10 @@ const changeDay = (dir: "prev" | "next") => {
                   <div key={type} className="flex-1 flex flex-col items-center">
                     <button
                       onClick={() => setGoalType(type)}
-                      className={`w-full py-2 rounded-lg capitalize ${
+                      className={`w-full py-2 rounded-lg capitalize transition-all duration-150 active:scale-[0.97] ${
                         goalType === type
-                          ? "bg-white text-black"
-                          : "border border-[#232734]"
+                          ? "bg-white text-black hover:bg-white/90"
+                          : "border border-[#232734] hover:border-[#3a4152] hover:bg-[#1b1f28]"
                       }`}
                     >
                       {type}
@@ -427,7 +466,12 @@ const changeDay = (dir: "prev" | "next") => {
 
             <button
               onClick={handleGenerate}
-              className="w-full bg-white text-black py-2 rounded-lg"
+              disabled={!weight || isNaN(parseFloat(weight))}
+              className={`w-full py-2 rounded-lg transition-all duration-200 active:scale-[0.98] ${
+                !weight || isNaN(parseFloat(weight))
+                  ? "bg-[#232734] text-[#6B7280] cursor-not-allowed"
+                  : "bg-white text-black hover:bg-white/90"
+              }`}
             >
               {isGenerating ? "Generating..." : "Generate"}
             </button>
@@ -448,7 +492,7 @@ const changeDay = (dir: "prev" | "next") => {
                   onChange={(e) =>
                     setGoals({ ...goals, calories: Number(e.target.value) })
                   }
-                  className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm"
+                  className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm outline-none transition focus:border-white/40"
                 />
               </div>
 
@@ -460,7 +504,7 @@ const changeDay = (dir: "prev" | "next") => {
                   onChange={(e) =>
                     setGoals({ ...goals, protein: Number(e.target.value) })
                   }
-                  className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm"
+                  className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm outline-none transition focus:border-white/40"
                 />
               </div>
 
@@ -472,7 +516,7 @@ const changeDay = (dir: "prev" | "next") => {
                   onChange={(e) =>
                     setGoals({ ...goals, carbs: Number(e.target.value) })
                   }
-                  className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm"
+                  className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm outline-none transition focus:border-white/40"
                 />
               </div>
 
@@ -484,7 +528,7 @@ const changeDay = (dir: "prev" | "next") => {
                   onChange={(e) =>
                     setGoals({ ...goals, fat: Number(e.target.value) })
                   }
-                  className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm"
+                  className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm outline-none transition focus:border-white/40"
                 />
               </div>
 
@@ -493,7 +537,7 @@ const changeDay = (dir: "prev" | "next") => {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setShowModal(false)}
-                className="flex-1 border border-[#232734] rounded-lg py-2"
+                className="flex-1 border border-[#232734] rounded-lg py-2 transition-all duration-150 hover:border-[#3a4152] hover:bg-[#1b1f28] active:scale-[0.98]"
               >
                 Cancel
               </button>
@@ -501,10 +545,10 @@ const changeDay = (dir: "prev" | "next") => {
               <button
                 onClick={saveGoals}
                 disabled={saving}
-                className={`flex-1 rounded-lg py-2 ${
+                className={`flex-1 rounded-lg py-2 transition-all duration-200 active:scale-[0.98] ${
                   saving
-                    ? "bg-[#232734] text-[#6B7280]"
-                    : "bg-white text-black"
+                    ? "bg-[#232734] text-[#6B7280] cursor-not-allowed"
+                    : "bg-white text-black hover:bg-white/90"
                 }`}
               >
                 {saving ? "Saving..." : "Save"}

@@ -1,0 +1,224 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { Sparkles } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import { getUserProfile, lbsToKg } from "@/lib/getUserProfile"
+import { getWorkoutImage } from "@/lib/getWorkoutImage"
+import {
+  WORKOUT_TYPES,
+  estimateCaloriesBurned,
+  type WorkoutType,
+} from "@/lib/workoutMeta"
+import WorkoutReviewCard from "./WorkoutReviewCard"
+
+type Props = {
+  open: boolean
+  onClose: () => void
+  onSaved: () => void
+}
+
+type Step = "type" | "duration" | "loading" | "review"
+
+export default function WorkoutLogger({ open, onClose, onSaved }: Props) {
+  const [step, setStep] = useState<Step>("type")
+  const [workoutType, setWorkoutType] = useState<WorkoutType | null>(null)
+  const [duration, setDuration] = useState("")
+  const [imageUrl, setImageUrl] = useState("")
+  const [calories, setCalories] = useState(0)
+  const [note, setNote] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setStep("type")
+      setWorkoutType(null)
+      setDuration("")
+      setImageUrl("")
+      setCalories(0)
+      setNote("")
+      setIsSaving(false)
+      setSaveSuccess(false)
+    }
+  }, [open])
+
+  if (!open) return null
+
+  const handlePickType = (type: WorkoutType) => {
+    setWorkoutType(type)
+    setStep("duration")
+  }
+
+  const handleConfirmDuration = async () => {
+    const minutes = parseFloat(duration)
+    if (!workoutType || !minutes || minutes <= 0) return
+
+    setStep("loading")
+
+    try {
+      const [profile, fetchedImage] = await Promise.all([
+        getUserProfile(),
+        getWorkoutImage(workoutType),
+      ])
+
+      const weightKg = profile?.weight ? lbsToKg(profile.weight) : undefined
+      const estimate = estimateCaloriesBurned(workoutType, minutes, weightKg)
+
+      setImageUrl(fetchedImage)
+      setCalories(estimate)
+      setStep("review")
+    } catch (err) {
+      console.error("WORKOUT PREP FAILED:", err)
+      setStep("duration")
+    }
+  }
+
+  const handleSave = async () => {
+    if (!workoutType || isSaving) return
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      alert("Not logged in")
+      return
+    }
+
+    setIsSaving(true)
+
+    try {
+      const { error } = await supabase.from("workouts").insert([
+        {
+          user_id: user.id,
+          workout_type: workoutType,
+          duration_minutes: Math.round(parseFloat(duration)),
+          calories_burned: calories,
+          photo_url: imageUrl,
+          note: note || null,
+        },
+      ])
+
+      if (error) {
+        console.error("WORKOUT SAVE ERROR:", error)
+        setIsSaving(false)
+        return
+      }
+
+      setSaveSuccess(true)
+
+      setTimeout(() => {
+        onSaved()
+        onClose()
+      }, 1000)
+    } catch (err) {
+      console.error(err)
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in p-4">
+      {step === "type" && (
+        <div className="bg-[#171A21] border border-[#232734] rounded-2xl p-6 w-full max-w-sm space-y-4 relative animate-fade-scale-in">
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur flex items-center justify-center text-white text-sm transition-all duration-150 hover:bg-black/70 active:scale-90"
+          >
+            ✕
+          </button>
+
+          <h2 className="text-lg font-semibold text-white">Log a workout</h2>
+          <p className="text-xs text-[#9AA3B2] -mt-3">What did you do?</p>
+
+          <div className="grid grid-cols-2 gap-3">
+            {WORKOUT_TYPES.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                onClick={() => handlePickType(value)}
+                className="flex flex-col items-center gap-2 py-4 rounded-xl border border-[#232734] transition-all duration-150 hover:border-[#3a4152] hover:bg-[#1b1f28] active:scale-[0.97]"
+              >
+                <Icon size={20} className="text-[#E6E8EC]" />
+                <span className="text-xs text-[#E6E8EC]">{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {step === "duration" && workoutType && (
+        <div className="bg-[#171A21] border border-[#232734] rounded-2xl p-6 w-full max-w-sm space-y-4 relative animate-fade-scale-in">
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur flex items-center justify-center text-white text-sm transition-all duration-150 hover:bg-black/70 active:scale-90"
+          >
+            ✕
+          </button>
+
+          <button
+            onClick={() => setStep("type")}
+            className="text-xs text-[#9AA3B2] hover:text-white active:scale-95 transition"
+          >
+            ‹ Back
+          </button>
+
+          <h2 className="text-lg font-semibold text-white">
+            How long was it?
+          </h2>
+
+          <input
+            type="number"
+            min={1}
+            autoFocus
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+            placeholder="Duration (minutes)"
+            className="w-full bg-[#0F1115] border border-[#232734] rounded-xl px-3 py-3 text-sm text-white outline-none transition focus:border-white/40"
+          />
+
+          <button
+            onClick={handleConfirmDuration}
+            disabled={!duration || parseFloat(duration) <= 0}
+            className={`w-full rounded-lg py-2 transition-all duration-200 active:scale-[0.98] ${
+              duration && parseFloat(duration) > 0
+                ? "bg-white text-black hover:bg-white/90"
+                : "bg-[#232734] text-[#6B7280] cursor-not-allowed"
+            }`}
+          >
+            Continue
+          </button>
+        </div>
+      )}
+
+      {step === "loading" && (
+        <div className="bg-[#171A21] border border-[#232734] rounded-2xl p-8 w-full max-w-sm flex flex-col items-center gap-3 animate-fade-scale-in">
+          <div className="w-12 h-12 rounded-full bg-white/10 border border-white/10 backdrop-blur flex items-center justify-center">
+            <Sparkles size={20} className="text-white animate-pulse-soft" />
+          </div>
+          <p className="text-sm text-white font-medium">
+            Getting your workout ready...
+          </p>
+        </div>
+      )}
+
+      {step === "review" && workoutType && (
+        <div className="w-full max-w-sm">
+          <WorkoutReviewCard
+            imageUrl={imageUrl}
+            workoutType={workoutType}
+            durationMinutes={Math.round(parseFloat(duration))}
+            calories={calories}
+            setCalories={setCalories}
+            note={note}
+            setNote={setNote}
+            onSave={handleSave}
+            isSaving={isSaving}
+            saveSuccess={saveSuccess}
+            onCancel={onClose}
+          />
+        </div>
+      )}
+    </div>
+  )
+}

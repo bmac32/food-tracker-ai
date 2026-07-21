@@ -59,6 +59,7 @@ export default function MealReviewCard({
     <div
       className={`
         bg-[#171A21] border border-[#232734] rounded-2xl overflow-hidden
+        animate-fade-slide-up
         transition-all duration-500
         ${saveSuccess ? "scale-[0.98] opacity-60" : ""}
       `}
@@ -70,7 +71,7 @@ export default function MealReviewCard({
         {/* CANCEL PREVIEW */}
         <button
           onClick={onCancel}
-          className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white text-sm hover:scale-110 transition"
+          className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white text-sm transition-all duration-150 hover:bg-black/60 hover:scale-110 active:scale-90"
         >
           ✕
         </button>
@@ -120,12 +121,12 @@ export default function MealReviewCard({
             {foods.map((food, i) => (
               <div
                 key={i}
-                className="flex items-center gap-1 bg-[#232734] px-2 py-1 rounded-full text-xs"
+                className="flex items-center gap-1 bg-[#232734] px-2 py-1 rounded-full text-xs transition-colors duration-150 hover:bg-[#2A2F3A]"
               >
                 {food}
                 <button
                   onClick={() => handleRemove(i)}
-                  className="text-[#6B7280] hover:text-white"
+                  className="text-[#6B7280] transition-all duration-150 hover:text-white active:scale-90"
                 >
                   ✕
                 </button>
@@ -138,11 +139,11 @@ export default function MealReviewCard({
               value={newFood}
               onChange={(e) => setNewFood(e.target.value)}
               placeholder="Add ingredient"
-              className="flex-1 bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-xs"
+              className="flex-1 bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-xs outline-none transition focus:border-white/40"
             />
             <button
               onClick={handleAdd}
-              className="px-3 py-2 bg-[#232734] rounded-lg text-xs active:scale-[0.98]"
+              className="px-3 py-2 bg-[#232734] rounded-lg text-xs transition-all duration-150 hover:bg-[#2A2F3A] active:scale-[0.97]"
             >
               Add
             </button>
@@ -170,7 +171,7 @@ export default function MealReviewCard({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Add a note..."
-          className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm"
+          className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm outline-none transition focus:border-white/40"
         />
 
         {/* SAVE BUTTON */}
@@ -182,10 +183,10 @@ export default function MealReviewCard({
             transition-all duration-300 flex items-center justify-center gap-2
             ${
               isSaving
-                ? "bg-[#232734] text-[#9AA3B2]"
+                ? "bg-[#232734] text-[#9AA3B2] cursor-not-allowed"
                 : saveSuccess
                 ? "bg-green-500 text-white"
-                : "bg-white text-black"
+                : "bg-white text-black hover:bg-white/90"
             }
             active:scale-[0.98]
           `}

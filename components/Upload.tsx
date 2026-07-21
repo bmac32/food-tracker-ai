@@ -38,7 +38,7 @@ export default function Upload({ onFileSelect, onManualEntry }: Props) {
       {/* 🔥 MANUAL ENTRY (THIS WAS BROKEN) */}
       <button
         onClick={onManualEntry}
-        className="w-full text-sm text-[#9AA3B2] hover:text-white transition"
+        className="w-full text-sm text-[#9AA3B2] hover:text-white active:scale-[0.98] transition"
       >
         Enter meal manually
       </button>

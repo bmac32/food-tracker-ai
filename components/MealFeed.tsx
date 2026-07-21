@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { supabase } from "../lib/supabase"
-import { Send, SlidersHorizontal } from "lucide-react"
-import { text } from "stream/consumers"
+import { Send, SlidersHorizontal, UtensilsCrossed } from "lucide-react"
+import WorkoutCard from "./WorkoutCard"
 
 type Props = {
   currentDate: Date
@@ -19,8 +19,9 @@ export default function MealFeed({
   onDeleteSuccess,
 }: Props) {
   const [meals, setMeals] = useState<any[]>([])
-  const [deletedIds, setDeletedIds] = useState<number[]>([])
-  const [deletingIds, setDeletingIds] = useState<number[]>([])
+  const [workouts, setWorkouts] = useState<any[]>([])
+  const [deletedIds, setDeletedIds] = useState<(number | string)[]>([])
+  const [deletingIds, setDeletingIds] = useState<(number | string)[]>([])
 
   const [sharingMeal, setSharingMeal] = useState<any | null>(null)
   const [selectedIntent, setSelectedIntent] = useState<string | null>(null)
@@ -103,8 +104,31 @@ export default function MealFeed({
     setMeals(data || [])
   }
 
+  async function loadWorkouts() {
+    const start = new Date(currentDate)
+    start.setHours(0, 0, 0, 0)
+
+    const end = new Date(currentDate)
+    end.setHours(23, 59, 59, 999)
+
+    const { data, error } = await supabase
+      .from("workouts")
+      .select("*")
+      .gte("created_at", start.toISOString())
+      .lte("created_at", end.toISOString())
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("WORKOUTS LOAD ERROR:", error)
+      return
+    }
+
+    setWorkouts(data || [])
+  }
+
   useEffect(() => {
     loadMeals()
+    loadWorkouts()
 
     const channel = supabase
       .channel("meals-feed")
@@ -119,6 +143,17 @@ export default function MealFeed({
           loadMeals()
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "workouts",
+        },
+        () => {
+          loadWorkouts()
+        }
+      )
       .subscribe()
 
     return () => {
@@ -126,35 +161,59 @@ export default function MealFeed({
     }
   }, [refreshTrigger, currentDate])
 
-  const handleDelete = async (meal: any) => {
-    if (!meal?.id) return
+  const handleDelete = async (item: any) => {
+    if (!item?.id) return
 
-    setDeletingIds((prev) => [...prev, meal.id])
+    const table = item.__kind === "workout" ? "workouts" : "meals"
 
-    if (typeof meal.id !== "string") {
+    setDeletingIds((prev) => [...prev, item.id])
+
+    if (typeof item.id !== "string") {
       setTimeout(() => {
-        setDeletedIds((prev) => [...prev, meal.id])
-        setDeletingIds((prev) => prev.filter((id) => id !== meal.id))
+        setDeletedIds((prev) => [...prev, item.id])
+        setDeletingIds((prev) => prev.filter((id) => id !== item.id))
       }, 250)
       return
     }
 
     try {
       const { error } = await supabase
-        .from("meals")
+        .from(table)
         .delete()
-        .eq("id", meal.id)
+        .eq("id", item.id)
 
       if (error) return
 
       setTimeout(() => {
-        setDeletedIds((prev) => [...prev, meal.id])
-        setMeals((prev) => prev.filter((m) => m.id !== meal.id))
-        setDeletingIds((prev) => prev.filter((id) => id !== meal.id))
+        setDeletedIds((prev) => [...prev, item.id])
+
+        if (table === "workouts") {
+          setWorkouts((prev) => prev.filter((w) => w.id !== item.id))
+        } else {
+          setMeals((prev) => prev.filter((m) => m.id !== item.id))
+        }
+
+        setDeletingIds((prev) => prev.filter((id) => id !== item.id))
 
         onDeleteSuccess?.()
       }, 250)
     } catch {}
+  }
+
+  const handleUpdateWorkout = async (id: string, updates: any) => {
+    const { error } = await supabase
+      .from("workouts")
+      .update(updates)
+      .eq("id", id)
+
+    if (error) {
+      console.error("WORKOUT UPDATE ERROR:", error)
+      return
+    }
+
+    setWorkouts((prev) =>
+      prev.map((w) => (w.id === id ? { ...w, ...updates } : w))
+    )
   }
 
   const [openInsightMealId, setOpenInsightMealId] = useState<number | null>(null)
@@ -186,22 +245,45 @@ export default function MealFeed({
   }
 
   const mergedMeals = [
-    ...optimisticMeals,
-    ...meals,
-  ].filter((meal) => !deletedIds.includes(meal.id))
+    ...optimisticMeals.map((m) => ({ ...m, __kind: "meal" })),
+    ...meals.map((m) => ({ ...m, __kind: "meal" })),
+    ...workouts.map((w) => ({ ...w, __kind: "workout" })),
+  ]
+    .filter((item) => !deletedIds.includes(item.id))
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
 
   return (
     <>
       <div className="mt-8 space-y-6">
 
         {mergedMeals.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-[#6B7280]">
-            <p className="text-sm">No meals logged</p>
-            <p className="text-xs mt-1 opacity-70">Start by adding a meal above</p>
+          <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center rounded-2xl border border-dashed border-[#232734] bg-[#171A21]/40 animate-fade-in">
+            <div className="w-12 h-12 rounded-full bg-[#232734] flex items-center justify-center">
+              <UtensilsCrossed size={20} className="text-[#6B7280]" />
+            </div>
+            <div>
+              <p className="text-sm text-[#E6E8EC] font-medium">No meals or workouts logged yet</p>
+              <p className="text-xs text-[#6B7280] mt-1">Log a meal or a workout above to get started</p>
+            </div>
           </div>
         )}
 
         {mergedMeals.map((meal) => {
+          if (meal.__kind === "workout") {
+            return (
+              <WorkoutCard
+                key={meal.id}
+                workout={meal}
+                isDeleting={deletingIds.includes(meal.id)}
+                onDelete={() => handleDelete(meal)}
+                onUpdate={(updates) => handleUpdateWorkout(meal.id, updates)}
+              />
+            )
+          }
+
           let ai = null
 
           try {
@@ -228,10 +310,10 @@ export default function MealFeed({
           return (
             <div
               key={meal.id || meal.created_at}
-              className={`bg-[#171A21] border border-[#232734] rounded-2xl overflow-hidden transition-all duration-300 ${
+              className={`bg-[#171A21] border border-[#232734] rounded-2xl overflow-hidden transition-all duration-300 animate-fade-slide-up ${
                 isDeleting
                   ? "opacity-0 scale-95"
-                  : "opacity-100 scale-100 hover:scale-[1.01]"
+                  : "opacity-100 scale-100 hover:scale-[1.01] hover:border-[#2c313d] hover:shadow-lg hover:shadow-black/20"
               }`}
             >
               <div className="relative">
@@ -243,7 +325,7 @@ export default function MealFeed({
                   onClick={() => {
                     setEditingMealId(meal.id)
                     setEditNote(meal.note || "")
-                    
+
                     const parsed =
                       typeof meal.ai_analysis === "string"
                         ? JSON.parse(meal.ai_analysis)
@@ -251,20 +333,20 @@ export default function MealFeed({
 
                     setEditIngredients(parsed?.foods || [])
                   }}
-                  className="absolute top-3 left-3 z-10 w-9 h-9 rounded-full bg-black/40 flex items-center justify-center text-white"
+                  className="absolute top-3 left-3 z-10 w-9 h-9 rounded-full bg-black/40 flex items-center justify-center text-white transition-all duration-150 hover:bg-black/60 active:scale-90"
                 >
                   <SlidersHorizontal size={16} />
                 </button>
 
                 <button
                   onClick={() => handleShare(meal)}
-                  className={`absolute top-3 right-12 z-10 w-8 h-8 rounded-full flex items-center justify-center text-white transition-all duration-200 ${
+                  className={`absolute top-3 right-12 z-10 w-8 h-8 rounded-full flex items-center justify-center text-white transition-all duration-200 active:scale-90 ${
                   isUnseen
-                    ? "bg-purple-500/40 backdrop-blur-md border border-purple-400/50 shadow-[0_0_10px_rgba(168,85,247,0.4)]"
-                    : "bg-black/50"
+                    ? "bg-purple-500/40 backdrop-blur-md border border-purple-400/50 shadow-[0_0_10px_rgba(168,85,247,0.4)] hover:bg-purple-500/50"
+                    : "bg-black/50 hover:bg-black/70"
                 }`}
                 >
-                  <Send 
+                  <Send
                     size={16}
                     className={hasInsight ? "opacity-100" : "opacity-90"}
                   />
@@ -272,7 +354,7 @@ export default function MealFeed({
 
                 <button
                   onClick={() => handleDelete(meal)}
-                  className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center text-white"
+                  className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center text-white transition-all duration-150 hover:bg-red-500/40 active:scale-90"
                 >
                   ✕
                 </button>
@@ -284,7 +366,7 @@ export default function MealFeed({
                 </div>
               </div>
 
-              <div className="px-4 py-3 space-y-2.5">
+              <div className="p-4 space-y-3">
 
                 {editingMealId === meal.id ? (
                   <div>
@@ -293,7 +375,7 @@ export default function MealFeed({
                       {editIngredients.map((ing, i) => (
                         <span
                           key={i}
-                          className="bg-[#232734] px-2 py-1 rounded-full text-xs text-white flex items-center gap-1"
+                          className="bg-[#232734] px-2 py-1 rounded-full text-xs text-white flex items-center gap-1 transition-colors duration-150 hover:bg-[#2A2F3A]"
                         >
                           {ing}
                           <button
@@ -302,7 +384,7 @@ export default function MealFeed({
                                 prev.filter((_, idx) => idx !== i)
                               )
                             }
-                            className="ml-1"
+                            className="ml-1 text-[#9AA3B2] transition-all duration-150 hover:text-white active:scale-90"
                           >
                             ✕
                           </button>
@@ -315,7 +397,7 @@ export default function MealFeed({
                         value={newIngredient}
                         onChange={(e) => setNewIngredient(e.target.value)}
                         placeholder="Add ingredient..."
-                        className="flex-1 bg-[#232734] rounded-xl px-3 py-2 text-sm text-white"
+                        className="flex-1 bg-[#232734] rounded-xl px-3 py-2 text-sm text-white outline-none transition focus:ring-1 focus:ring-white/30"
                       />
                       <button
                         onClick={() => {
@@ -323,7 +405,7 @@ export default function MealFeed({
                           setEditIngredients((prev) => [...prev, newIngredient])
                           setNewIngredient("")
                         }}
-                        className="px-3 rounded-xl bg-white text-black text-sm"
+                        className="px-3 rounded-xl bg-white text-black text-sm transition-all duration-150 hover:bg-white/90 active:scale-[0.97]"
                       >
                         Add
                       </button>
@@ -332,7 +414,7 @@ export default function MealFeed({
                     <textarea
                       value={editNote}
                       onChange={(e) => setEditNote(e.target.value)}
-                      className="w-full bg-[#232734] rounded-xl p-3 text-sm text-white mt-4"
+                      className="w-full bg-[#232734] rounded-xl p-3 text-sm text-white mt-4 outline-none transition focus:ring-1 focus:ring-white/30"
                     />
 
                     <div className="flex gap-2">
@@ -419,9 +501,9 @@ export default function MealFeed({
                         }}
                         className={`
                           flex-1 py-2 rounded-lg text-sm transition-all duration-200
-                          ${isSavingEdit 
-                            ? "bg-[#2A2F3A] text-[#6B7280]" 
-                            : "bg-white text-black active:scale-[0.97]"
+                          ${isSavingEdit
+                            ? "bg-[#2A2F3A] text-[#6B7280] cursor-not-allowed"
+                            : "bg-white text-black hover:bg-white/90 active:scale-[0.97]"
                           }
                         `}
                         disabled={isSavingEdit}                      >
@@ -430,7 +512,7 @@ export default function MealFeed({
 
                       <button
                         onClick={() => setEditingMealId(null)}
-                        className="flex-1 py-2 rounded-lg bg-[#232734] text-white text-sm"
+                        className="flex-1 py-2 rounded-lg bg-[#232734] text-white text-sm transition-all duration-150 hover:bg-[#2A2F3A] active:scale-[0.97]"
                       >
                         Cancel
                       </button>
@@ -487,17 +569,17 @@ export default function MealFeed({
       </div>
 
       {sharingMeal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-end">
-          <div className="w-full bg-[#171A21] rounded-t-3xl p-6 text-white relative">
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end animate-fade-in">
+          <div className="w-full bg-[#171A21] border-t border-[#232734] rounded-t-3xl p-6 text-white relative animate-fade-slide-up">
 
             {/* ✅ ADD THIS BUTTON RIGHT HERE */}
             <button
               onClick={() => setSharingMeal(null)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#232734] flex items-center justify-center text-[#9AA3B2] active:scale-[0.95]"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#232734] flex items-center justify-center text-[#9AA3B2] transition-all duration-150 hover:bg-[#2A2F3A] hover:text-white active:scale-[0.95]"
             >
               ✕
             </button>
-          
+
             <p className="text-sm text-[#9AA3B2] mb-3">
               Share with someone
             </p>
@@ -506,14 +588,14 @@ export default function MealFeed({
               value={recipientEmail}
               onChange={(e) => setRecipientEmail(e.target.value)}
               placeholder="Enter email"
-              className="w-full p-3 rounded-xl bg-[#0F1115] text-white placeholder-[#6B7280] mb-3"
+              className="w-full p-3 rounded-xl bg-[#0F1115] border border-[#232734] text-white placeholder-[#6B7280] mb-3 outline-none transition focus:border-white/40"
             />
 
             <textarea
               value={shareMessage}
               onChange={(e) => setShareMessage(e.target.value)}
               placeholder="Add a note (optional)"
-              className="w-full p-3 rounded-xl bg-[#0F1115] text-white placeholder-[#6B7280] mb-4"
+              className="w-full p-3 rounded-xl bg-[#0F1115] border border-[#232734] text-white placeholder-[#6B7280] mb-4 outline-none transition focus:border-white/40"
             />
 
             <button
@@ -523,8 +605,8 @@ export default function MealFeed({
                 shareSent
                   ? "bg-white/80 text-black scale-[0.98]"
                   : recipientEmail
-                  ? "bg-white text-black active:scale-[0.98]"
-                  : "bg-[#232734] text-[#6B7280]"
+                  ? "bg-white text-black hover:bg-white/90 active:scale-[0.98]"
+                  : "bg-[#232734] text-[#6B7280] cursor-not-allowed"
               }`}
             >
               {shareSent ? "Sent" : "Send"}

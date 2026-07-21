@@ -96,7 +96,7 @@ export default function LoginPage() {
               <button
                 onClick={handleLogin}
                 disabled={loading}
-                className="relative w-full bg-white text-black rounded-xl py-3 font-medium overflow-hidden"
+                className="relative w-full bg-white text-black rounded-xl py-3 font-medium overflow-hidden transition-all duration-200 hover:bg-white/90 active:scale-[0.98] disabled:cursor-not-allowed"
               >
                 {loading && (
                   <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-[shimmer_1.2s_infinite]" />

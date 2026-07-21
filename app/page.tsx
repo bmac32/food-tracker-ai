@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabase"
 import { getSmartFoodImage } from "@/lib/getSmartFoodImage"
 
+import { Sparkles, Dumbbell } from "lucide-react"
+
 import Upload from "@/components/Upload"
 import DailySummary from "@/components/DailySummary"
 import MealFeed from "@/components/MealFeed"
 import MealReviewCard from "@/components/MealReviewCard"
 import UserInfo from "@/components/UserInfo"
+import WorkoutLogger from "@/components/WorkoutLogger"
 
 type Analysis = {
   meal_name: string
@@ -58,6 +61,7 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [workoutLoggerOpen, setWorkoutLoggerOpen] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -293,22 +297,68 @@ export default function Home() {
     <main className="relative z-10 max-w-xl mx-auto p-6 space-y-6 min-h-screen pt-52">
 
       {!photoUrl && !analysis && (
-        <Upload
-          onFileSelect={uploadAndAnalyze}
-          onManualEntry={() => setTextInputMode(true)}
-        />
+        <>
+          <Upload
+            onFileSelect={uploadAndAnalyze}
+            onManualEntry={() => setTextInputMode(true)}
+          />
+
+          <button
+            onClick={() => setWorkoutLoggerOpen(true)}
+            className="w-full flex items-center justify-center gap-2 bg-[#171A21] border border-[#232734] rounded-2xl py-4 text-sm font-medium text-[#E6E8EC] transition-all duration-150 hover:border-orange-400/40 hover:bg-[#1d212b] active:scale-[0.99]"
+          >
+            <Dumbbell size={16} className="text-orange-300" />
+            Log workout
+          </button>
+        </>
       )}
 
       {analyzing && (
-        <div className="bg-[#171A21] border border-[#232734] rounded-2xl overflow-hidden animate-pulse">
-          {photoUrl && (
-            <img
-              src={photoUrl}
-              className="w-full h-[280px] object-cover opacity-70"
-            />
-          )}
-          <div className="p-4 text-center">
-            ✨ Analyzing your meal
+        <div className="bg-[#171A21] border border-[#232734] rounded-2xl overflow-hidden animate-fade-scale-in">
+          <div className="relative h-[220px] overflow-hidden">
+            {photoUrl ? (
+              <img
+                src={photoUrl}
+                className="w-full h-full object-cover opacity-40"
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-[#1a1f2b] via-[#171A21] to-[#141822]" />
+            )}
+
+            <div className="absolute inset-0 bg-gradient-to-t from-[#171A21] via-black/10 to-black/30" />
+
+            <div className="absolute inset-0 -translate-x-full animate-shimmer-sweep bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-white/10 border border-white/10 backdrop-blur flex items-center justify-center">
+                <Sparkles size={20} className="text-white animate-pulse-soft" />
+              </div>
+
+              <div className="flex items-center gap-1.5 text-sm text-white font-medium">
+                <span>Analyzing your meal</span>
+                <span className="flex items-end gap-0.5 pb-0.5">
+                  <span className="w-1 h-1 rounded-full bg-white animate-bounce-dot [animation-delay:0ms]" />
+                  <span className="w-1 h-1 rounded-full bg-white animate-bounce-dot [animation-delay:160ms]" />
+                  <span className="w-1 h-1 rounded-full bg-white animate-bounce-dot [animation-delay:320ms]" />
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* SKELETON CONTENT */}
+          <div className="p-4 space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <div className="h-6 w-16 rounded-full bg-[#232734] animate-pulse-soft" />
+              <div className="h-6 w-20 rounded-full bg-[#232734] animate-pulse-soft [animation-delay:120ms]" />
+              <div className="h-6 w-14 rounded-full bg-[#232734] animate-pulse-soft [animation-delay:240ms]" />
+            </div>
+
+            <div className="flex justify-between pt-3 border-t border-[#232734]">
+              <div className="h-3 w-10 rounded bg-[#232734] animate-pulse-soft" />
+              <div className="h-3 w-10 rounded bg-[#232734] animate-pulse-soft [animation-delay:80ms]" />
+              <div className="h-3 w-10 rounded bg-[#232734] animate-pulse-soft [animation-delay:160ms]" />
+              <div className="h-3 w-10 rounded bg-[#232734] animate-pulse-soft [animation-delay:240ms]" />
+            </div>
           </div>
         </div>
       )}
@@ -338,16 +388,16 @@ export default function Home() {
       />
 
       {textInputMode && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-[#171A21] rounded-2xl p-6 w-[90%] max-w-sm space-y-4 relative">
-             
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-[#171A21] border border-[#232734] rounded-2xl p-6 w-[90%] max-w-sm space-y-4 relative animate-fade-scale-in">
+
              {/* ❌ CLOSE BUTTON */}
             <button
               onClick={() => {
                 setTextInputMode(false)
                 setMealText("")
               }}
-              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur flex items-center justify-center text-white text-sm"
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur flex items-center justify-center text-white text-sm transition-all duration-150 hover:bg-black/70 active:scale-90"
             >
               ✕
             </button>
@@ -356,18 +406,29 @@ export default function Home() {
               value={mealText}
               onChange={(e) => setMealText(e.target.value)}
               placeholder="Describe your meal"
-              className="w-full bg-[#0F1115] border border-[#232734] rounded-xl px-3 py-3 text-sm"
+              className="w-full bg-[#0F1115] border border-[#232734] rounded-xl px-3 py-3 text-sm outline-none transition focus:border-white/40"
             />
 
             <button
               onClick={analyzeTextMeal}
-              className="w-full bg-white text-black rounded-lg py-2"
+              disabled={!mealText.trim()}
+              className={`w-full rounded-lg py-2 transition-all duration-200 ${
+                mealText.trim()
+                  ? "bg-white text-black hover:bg-white/90 active:scale-[0.98]"
+                  : "bg-[#232734] text-[#6B7280] cursor-not-allowed"
+              }`}
             >
               Analyze
             </button>
           </div>
         </div>
       )}
+
+      <WorkoutLogger
+        open={workoutLoggerOpen}
+        onClose={() => setWorkoutLoggerOpen(false)}
+        onSaved={() => setRefreshFeed((prev) => prev + 1)}
+      />
     </main>
   </div>
  )

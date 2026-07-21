@@ -156,23 +156,23 @@ export default function SharePage() {
             value={reply}
             onChange={(e) => setReply(e.target.value)}
             placeholder="Add your insight..."
-            className="w-full p-3 rounded-xl bg-[#171A21] text-white placeholder-[#6B7280]"
+            className="w-full p-3 rounded-xl bg-[#171A21] border border-[#232734] text-white placeholder-[#6B7280] outline-none transition focus:border-white/40"
           />
 
           <button
             onClick={handleReply}
             disabled={!reply}
-            className={`w-full py-2 rounded-xl transition ${
+            className={`w-full py-2 rounded-xl transition-all duration-200 active:scale-[0.98] ${
               reply
-                ? "bg-white text-black active:scale-[0.98]"
-                : "bg-[#232734] text-[#6B7280]"
+                ? "bg-white text-black hover:bg-white/90"
+                : "bg-[#232734] text-[#6B7280] cursor-not-allowed"
             }`}
           >
             Send insight
           </button>
 
           {submitted && (
-            <p className="text-xs text-center text-[#9AA3B2]">
+            <p className="text-xs text-center text-[#9AA3B2] animate-fade-in">
               Insight sent
             </p>
           )}

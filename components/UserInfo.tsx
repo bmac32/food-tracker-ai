@@ -1,9 +1,11 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabase"
 
 export default function UserInfo() {
+  const router = useRouter()
   const [email, setEmail] = useState("")
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -69,10 +71,21 @@ export default function UserInfo() {
             {email}
           </div>
 
+          {/* Settings */}
+          <button
+            onClick={() => {
+              setOpen(false)
+              router.push("/settings")
+            }}
+            className="w-full text-left px-3 py-2 text-sm transition-colors duration-150 hover:bg-[#232734]"
+          >
+            Settings
+          </button>
+
           {/* Logout */}
           <button
             onClick={handleLogout}
-            className="w-full text-left px-3 py-2 text-sm hover:bg-[#232734] transition"
+            className="w-full text-left px-3 py-2 text-sm transition-colors duration-150 hover:bg-[#232734]"
           >
             Logout
           </button>
