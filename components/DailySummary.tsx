@@ -362,13 +362,19 @@ export default function DailySummary(props: Props) {
 
         <div className="relative z-20 flex items-center justify-between max-w-md mx-auto px-5 pt-1">
 
-          {/* LEFT: EDIT */}
-          <button
-            onClick={() => setShowModal(true)}
-            className="text-xs text-ink-faint hover:text-ink active:scale-95 transition pl-1"
-          >
-            {goals?.calories ? "Edit" : "Set"}
-          </button>
+          {/* LEFT: BRAND + EDIT */}
+          <div className="flex items-center gap-2 pl-1">
+            <span className="live-dot" />
+            <span className="text-xs font-extrabold tracking-[0.14em] text-ink-faint uppercase">
+              Goals
+            </span>
+            <button
+              onClick={() => setShowModal(true)}
+              className="text-[10px] text-ink-faint hover:text-ink active:scale-95 transition"
+            >
+              {goals?.calories ? "Edit" : "Set"}
+            </button>
+          </div>
 
           {/* CENTER: DATE (absolutely centered so it's unaffected by the
               unequal widths of Edit vs the profile avatar) */}

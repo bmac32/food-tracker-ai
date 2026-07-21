@@ -161,3 +161,38 @@ body {
     animation: none;
   }
 }
+
+/* -------------------------
+   LIVE DOT — small "active" sonar-ping indicator
+   ------------------------- */
+
+@keyframes sonar-ping {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(3.4); opacity: 0; }
+}
+
+.live-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+}
+
+.live-dot::before,
+.live-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--color-burn);
+}
+
+.live-dot::after {
+  animation: sonar-ping 2.2s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot::after {
+    animation: none;
+  }
+}

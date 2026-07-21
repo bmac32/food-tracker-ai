@@ -298,17 +298,25 @@ export default function Home() {
 
       {!photoUrl && !analysis && (
         <>
-          <Upload
-            onFileSelect={uploadAndAnalyze}
-            onManualEntry={() => setTextInputMode(true)}
-          />
+          <div className="flex gap-3">
+            <Upload onFileSelect={uploadAndAnalyze} />
+
+            <button
+              onClick={() => setWorkoutLoggerOpen(true)}
+              className="group flex-1 flex items-center justify-center gap-2 bg-surface border border-hair-strong rounded-2xl py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-burn/40 hover:bg-surface-2 active:scale-[0.97]"
+            >
+              <span className="w-5 h-5 rounded-full bg-gradient-to-br from-burn to-burn-2 flex items-center justify-center transition-transform duration-300 ease-spring group-active:scale-[1.15]">
+                <Dumbbell size={11} className="text-ground" />
+              </span>
+              Log workout
+            </button>
+          </div>
 
           <button
-            onClick={() => setWorkoutLoggerOpen(true)}
-            className="w-full flex items-center justify-center gap-2 bg-surface border border-hair-strong rounded-[22px] py-4 text-sm font-bold text-ink transition-all duration-150 ease-spring hover:border-burn/40 hover:bg-surface-2 active:scale-[0.99]"
+            onClick={() => setTextInputMode(true)}
+            className="w-full text-sm text-ink-faint hover:text-ink active:scale-[0.98] transition"
           >
-            <Dumbbell size={16} className="text-burn" />
-            Log workout
+            Enter meal manually
           </button>
         </>
       )}
