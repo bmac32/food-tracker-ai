@@ -290,10 +290,14 @@ export default function Home() {
   if (loading) return null
 
  return (
-  <div className="relative min-h-screen bg-ground text-ink overflow-hidden">
+  <div className="relative min-h-screen bg-ground text-ink">
 
-    {/* ✨ AURORA BACKGROUND — tied to the same cal/protein/carb/fat palette as the rings */}
-    <div className="absolute inset-0 z-0">
+    {/* ✨ AURORA BACKGROUND — tied to the same cal/protein/carb/fat palette as
+        the rings. overflow-hidden lives on this layer specifically (not the
+        outer wrapper) so it clips its own blobs without breaking position:
+        sticky on DailySummary below — sticky stops working if ANY ancestor
+        between it and the scroll container has overflow other than visible. */}
+    <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
       <div className="absolute w-[500px] h-[500px] bg-cal/10 blur-[140px] rounded-full top-[-120px] left-[-120px] animate-pulse" />
       <div className="absolute w-[400px] h-[400px] bg-fat/10 blur-[140px] rounded-full bottom-[-120px] right-[-120px] animate-pulse" />
       <div className="absolute w-[300px] h-[300px] bg-carb/10 blur-[120px] rounded-full top-[40%] left-[60%] animate-pulse" />
@@ -306,7 +310,7 @@ export default function Home() {
         scrollProgress={scrollProgress}
       />
 
-    <main className="relative z-10 max-w-xl mx-auto p-6 space-y-6 min-h-screen pt-52">
+    <main className="relative z-10 max-w-xl mx-auto p-6 space-y-6 min-h-screen">
 
       {!photoUrl && !analysis && (
         <div className="flex gap-3">

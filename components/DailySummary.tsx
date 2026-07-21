@@ -382,7 +382,7 @@ export default function DailySummary(props: Props) {
 
   return (
     <>
-        <div className="fixed top-0 left-0 right-0 z-40 bg-ground/95 backdrop-blur-md border-b border-hair">
+        <div className="sticky top-0 z-40 bg-ground/95 backdrop-blur-md border-b border-hair">
 
         <div className="relative z-20 flex items-center justify-between max-w-md mx-auto px-5 pt-1">
 
