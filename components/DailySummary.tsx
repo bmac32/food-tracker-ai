@@ -8,7 +8,7 @@ type Props = {
   refreshTrigger?: number
   currentDate: Date
   setCurrentDate: (date: Date) => void
-  isCollapsed?: boolean
+  scrollProgress?: number
 }
 
 type Meal = {
@@ -78,12 +78,14 @@ function Ring({
   goal,
   progress,
   type,
+  detailOpacity = 1,
 }: {
   label: string
   value: number
   goal: number
   progress: number
   type: string
+  detailOpacity?: number
 }) {
   const capped = Math.min(progress, 1)
   const color = RING_COLOR[type] || "var(--color-ink)"
@@ -123,13 +125,31 @@ function Ring({
       </div>
 
       <p className="text-xs mt-2 font-bold tracking-wide text-ink">{label}</p>
-      <p className="text-[11px] text-ink-faint">{getMessage(type, value, goal)}</p>
+      <p
+        className="text-[11px] text-ink-faint overflow-hidden"
+        style={{
+          opacity: detailOpacity,
+          maxHeight: detailOpacity > 0 ? "1.2em" : "0",
+        }}
+      >
+        {getMessage(type, value, goal)}
+      </p>
     </div>
   )
 }
 
 export default function DailySummary(props: Props) {
-  const { refreshTrigger, currentDate, setCurrentDate, isCollapsed } = props
+  const { refreshTrigger, currentDate, setCurrentDate } = props
+  const scrollProgress = props.scrollProgress ?? 0
+
+  // Derived, continuously-interpolated collapse values (no hard snap).
+  const ringScale = 1 - scrollProgress * 0.3 // 1 -> 0.7
+  // Secondary "X left" detail line fades out over the first 60% of the
+  // scroll range so the compact state only shows the essentials (ring +
+  // label), matching how iOS large titles drop their subtitle first.
+  const detailOpacity = Math.max(0, 1 - scrollProgress / 0.6)
+  const ringsMarginTop = 8 - scrollProgress * 6 // 8px -> 2px
+  const ringsPaddingBottom = 16 - scrollProgress * 10 // 16px -> 6px
   const [meals, setMeals] = useState<Meal[]>([])
   const [workouts, setWorkouts] = useState<{ calories_burned?: number }[]>([])
   const [showModal, setShowModal] = useState(false)
@@ -362,11 +382,7 @@ export default function DailySummary(props: Props) {
 
   return (
     <>
-        <div
-            className={`fixed top-0 left-0 right-0 z-40 bg-ground/95 backdrop-blur-md border-b border-hair transition-all duration-300 ${
-            isCollapsed ? "space-y-2" : "space-y-4"
-          }`}
-        >
+        <div className="fixed top-0 left-0 right-0 z-40 bg-ground/95 backdrop-blur-md border-b border-hair">
 
         <div className="relative z-20 flex items-center justify-between max-w-md mx-auto px-5 pt-1">
 
@@ -414,7 +430,13 @@ export default function DailySummary(props: Props) {
         </div>
 
         {/* 🔵 RINGS (NO CARD) */}
-       <div className="relative z-0 overflow-hidden mt-2">
+       <div
+         className="relative z-0 overflow-hidden"
+         style={{
+           marginTop: `${ringsMarginTop}px`,
+           paddingBottom: `${ringsPaddingBottom}px`,
+         }}
+       >
         {/* AURORA — ambient glow tied to the same ring colors, the
             signature "premium" moment behind the daily summary */}
         <div className="absolute -top-10 left-0 right-0 h-[140px] pointer-events-none blur-[38px] opacity-40">
@@ -425,9 +447,11 @@ export default function DailySummary(props: Props) {
         </div>
 
         <div
-          className={`relative grid grid-cols-4 gap-2 justify-items-center transition-all duration-300 ${
-            isCollapsed ? "scale-75 opacity-80" : "scale-100"
-          }`}
+          className="relative grid grid-cols-4 gap-2 justify-items-center"
+          style={{
+            transform: `scale(${ringScale})`,
+            transformOrigin: "top center",
+          }}
         >
 
           <Ring
@@ -436,6 +460,7 @@ export default function DailySummary(props: Props) {
             goal={goals.calories}
             progress={animatedProgress.calories}
             type="calories"
+            detailOpacity={detailOpacity}
           />
           <Ring
             label="Protein"
@@ -443,6 +468,7 @@ export default function DailySummary(props: Props) {
             goal={goals.protein}
             progress={animatedProgress.protein}
             type="protein"
+            detailOpacity={detailOpacity}
           />
           <Ring
             label="Carbs"
@@ -450,6 +476,7 @@ export default function DailySummary(props: Props) {
             goal={goals.carbs}
             progress={animatedProgress.carbs}
             type="carbs"
+            detailOpacity={detailOpacity}
           />
           <Ring
             label="Fat"
@@ -457,10 +484,11 @@ export default function DailySummary(props: Props) {
             goal={goals.fat}
             progress={animatedProgress.fat}
             type="fat"
+            detailOpacity={detailOpacity}
           />
         </div>
       </div>
-    </div> {/* CLOSE space-y-4 */}
+    </div>
 
       {showModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">

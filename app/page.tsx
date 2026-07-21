@@ -60,16 +60,27 @@ export default function Home() {
 
   const [isSaving, setIsSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [scrollProgress, setScrollProgress] = useState(0)
   const [workoutLoggerOpen, setWorkoutLoggerOpen] = useState(false)
   const [mealChooserOpen, setMealChooserOpen] = useState(false)
 
+  // Continuous 0→1 scroll progress (not a hard threshold) so the header
+  // collapses in lockstep with the scroll, like iOS's large-title behavior,
+  // instead of snapping at a fixed pixel breakpoint.
   useEffect(() => {
+    const COLLAPSE_RANGE = 90
+    let ticking = false
+
     const handleScroll = () => {
-      setIsCollapsed(window.scrollY > 60)
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => {
+        setScrollProgress(Math.min(window.scrollY / COLLAPSE_RANGE, 1))
+        ticking = false
+      })
     }
 
-    window.addEventListener("scroll", handleScroll)
+    window.addEventListener("scroll", handleScroll, { passive: true })
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
@@ -292,7 +303,7 @@ export default function Home() {
         refreshTrigger={refreshFeed}
         currentDate={currentDate}
         setCurrentDate={setCurrentDate}
-        isCollapsed={isCollapsed}
+        scrollProgress={scrollProgress}
       />
 
     <main className="relative z-10 max-w-xl mx-auto p-6 space-y-6 min-h-screen pt-52">
