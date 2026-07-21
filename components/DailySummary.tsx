@@ -404,8 +404,17 @@ export default function DailySummary(props: Props) {
 
         {/* 🔵 RINGS (NO CARD) */}
        <div className="relative z-0 overflow-hidden mt-2">
+        {/* AURORA — ambient glow tied to the same ring colors, the
+            signature "premium" moment behind the daily summary */}
+        <div className="absolute -top-10 left-0 right-0 h-[140px] pointer-events-none blur-[38px] opacity-40">
+          <div className="absolute w-28 h-28 rounded-full bg-cal top-0 left-[8%] animate-aurora-1" />
+          <div className="absolute w-28 h-28 rounded-full bg-protein top-5 left-[55%] animate-aurora-2" />
+          <div className="absolute w-28 h-28 rounded-full bg-carb top-8 left-[30%] animate-aurora-3" />
+          <div className="absolute w-28 h-28 rounded-full bg-fat top-2 left-[68%] animate-aurora-1-reverse" />
+        </div>
+
         <div
-          className={`grid grid-cols-4 gap-2 justify-items-center transition-all duration-300 ${
+          className={`relative grid grid-cols-4 gap-2 justify-items-center transition-all duration-300 ${
             isCollapsed ? "scale-75 opacity-80" : "scale-100"
           }`}
         >

@@ -21,6 +21,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.className} bg-ground text-ink antialiased`}>
         {children}
+        <div className="grain-overlay" aria-hidden="true" />
       </body>
     </html>
   )
