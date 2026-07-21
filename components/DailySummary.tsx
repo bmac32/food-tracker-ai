@@ -92,7 +92,16 @@ function Ring({
   return (
     <div className="flex flex-col items-center transition-transform duration-200 ease-spring active:scale-95">
       <div className="relative w-20 h-20">
-        <svg className="w-full h-full -rotate-90">
+        {/* Soft ambient glow — a blurred HTML div behind the ring, not an
+            SVG filter. SVG filter regions default to a tight bounding box
+            (110% of the element) and clip wide drop-shadows, which made
+            the glow look hard-edged/cut off instead of smooth. */}
+        <div
+          className="absolute inset-[-6px] rounded-full blur-lg opacity-40 pointer-events-none"
+          style={{ background: color }}
+        />
+
+        <svg className="relative w-full h-full -rotate-90">
           <circle cx="50%" cy="50%" r="34" stroke="var(--color-hair-strong)" strokeWidth="7" fill="none" />
           <circle
             cx="50%"
@@ -105,7 +114,6 @@ function Ring({
             strokeDashoffset={CIRCUMFERENCE - capped * CIRCUMFERENCE}
             strokeLinecap="round"
             className="transition-[stroke-dashoffset] duration-700 ease-out"
-            style={{ filter: `drop-shadow(0 0 5px color-mix(in srgb, ${color} 55%, transparent))` }}
           />
         </svg>
 
@@ -362,19 +370,16 @@ export default function DailySummary(props: Props) {
 
         <div className="relative z-20 flex items-center justify-between max-w-md mx-auto px-5 pt-1">
 
-          {/* LEFT: BRAND + EDIT */}
-          <div className="flex items-center gap-2 pl-1">
+          {/* LEFT: BRAND (tap to edit goals) */}
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 pl-1 text-ink-faint hover:text-ink active:scale-95 transition-transform duration-150 ease-spring"
+          >
             <span className="live-dot" />
-            <span className="text-xs font-extrabold tracking-[0.14em] text-ink-faint uppercase">
+            <span className="text-xs font-extrabold tracking-[0.14em] uppercase">
               Goals
             </span>
-            <button
-              onClick={() => setShowModal(true)}
-              className="text-[10px] text-ink-faint hover:text-ink active:scale-95 transition"
-            >
-              {goals?.calories ? "Edit" : "Set"}
-            </button>
-          </div>
+          </button>
 
           {/* CENTER: DATE (absolutely centered so it's unaffected by the
               unequal widths of Edit vs the profile avatar) */}

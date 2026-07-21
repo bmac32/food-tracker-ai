@@ -308,14 +308,17 @@ export default function MealFeed({
           const isDeleting = deletingIds.includes(meal.id)
 
           return (
-            <div
-              key={meal.id || meal.created_at}
-              className={`bg-surface border border-hair rounded-[22px] overflow-hidden transition-all duration-300 ease-spring animate-fade-slide-up ${
-                isDeleting
-                  ? "opacity-0 scale-95"
-                  : "opacity-100 scale-100 hover:scale-[1.01] active:scale-[0.99] hover:border-hair-strong hover:shadow-lg hover:shadow-black/20"
-              }`}
-            >
+            <div key={meal.id || meal.created_at} className="relative">
+              {/* subtle ambient glow behind the card, echoing the cal ring */}
+              <div className="absolute -inset-2 rounded-[26px] bg-cal/15 blur-xl opacity-60 pointer-events-none" />
+
+              <div
+                className={`relative bg-surface border border-hair rounded-[22px] overflow-hidden transition-all duration-300 ease-spring animate-fade-slide-up ${
+                  isDeleting
+                    ? "opacity-0 scale-95"
+                    : "opacity-100 scale-100 hover:scale-[1.01] active:scale-[0.99] hover:border-hair-strong hover:shadow-lg hover:shadow-black/20"
+                }`}
+              >
               <div className="relative">
                 <img src={imageSrc} className="w-full h-[260px] object-cover" />
 
@@ -564,6 +567,7 @@ export default function MealFeed({
                   </div>
                 )}
 
+              </div>
               </div>
             </div>
           )

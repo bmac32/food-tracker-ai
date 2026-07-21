@@ -62,6 +62,7 @@ export default function Home() {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [workoutLoggerOpen, setWorkoutLoggerOpen] = useState(false)
+  const [mealChooserOpen, setMealChooserOpen] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -297,28 +298,68 @@ export default function Home() {
     <main className="relative z-10 max-w-xl mx-auto p-6 space-y-6 min-h-screen pt-52">
 
       {!photoUrl && !analysis && (
-        <>
-          <div className="flex gap-3">
-            <Upload onFileSelect={uploadAndAnalyze} />
-
-            <button
-              onClick={() => setWorkoutLoggerOpen(true)}
-              className="group flex-1 flex items-center justify-center gap-2 bg-surface border border-hair-strong rounded-2xl py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-burn/40 hover:bg-surface-2 active:scale-[0.97]"
-            >
-              <span className="w-5 h-5 rounded-full bg-gradient-to-br from-burn to-burn-2 flex items-center justify-center transition-transform duration-300 ease-spring group-active:scale-[1.15]">
-                <Dumbbell size={11} className="text-ground" />
-              </span>
-              Log workout
-            </button>
-          </div>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setMealChooserOpen(true)}
+            className="group flex-1 flex items-center justify-center gap-2 bg-surface border border-hair-strong rounded-2xl py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-cal/40 hover:bg-surface-2 active:scale-[0.97]"
+          >
+            <span className="w-5 h-5 rounded-full bg-gradient-to-br from-cal to-[#ffd479] flex items-center justify-center text-[13px] font-black text-ground transition-transform duration-300 ease-spring group-active:rotate-90">
+              +
+            </span>
+            Log meal
+          </button>
 
           <button
-            onClick={() => setTextInputMode(true)}
-            className="w-full text-sm text-ink-faint hover:text-ink active:scale-[0.98] transition"
+            onClick={() => setWorkoutLoggerOpen(true)}
+            className="group flex-1 flex items-center justify-center gap-2 bg-surface border border-hair-strong rounded-2xl py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-burn/40 hover:bg-surface-2 active:scale-[0.97]"
           >
-            Enter meal manually
+            <span className="w-5 h-5 rounded-full bg-gradient-to-br from-burn to-burn-2 flex items-center justify-center transition-transform duration-300 ease-spring group-active:scale-[1.15]">
+              <Dumbbell size={11} className="text-ground" />
+            </span>
+            Log workout
           </button>
-        </>
+        </div>
+      )}
+
+      {mealChooserOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-surface border border-hair rounded-[22px] p-6 w-[90%] max-w-sm space-y-4 relative animate-fade-scale-in">
+            <button
+              onClick={() => setMealChooserOpen(false)}
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink text-sm transition-all duration-150 ease-spring hover:bg-black/70 active:scale-90"
+            >
+              ✕
+            </button>
+
+            <h2 className="text-lg font-bold text-ink">Log a meal</h2>
+            <p className="text-xs text-ink-faint -mt-3">How do you want to add it?</p>
+
+            <Upload
+              onFileSelect={(file) => {
+                setMealChooserOpen(false)
+                uploadAndAnalyze(file)
+              }}
+            />
+
+            <button
+              onClick={() => {
+                setMealChooserOpen(false)
+                setTextInputMode(true)
+              }}
+              className="group w-full flex items-center gap-3 bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-ink-faint active:scale-[0.98]"
+            >
+              <span className="w-8 h-8 rounded-full bg-surface border border-hair-strong flex items-center justify-center text-sm shrink-0 transition-transform duration-300 ease-spring group-active:rotate-12">
+                ✎
+              </span>
+              <span>
+                <span className="block">Enter manually</span>
+                <span className="block text-xs font-normal text-ink-faint mt-0.5">
+                  Describe your meal in words
+                </span>
+              </span>
+            </button>
+          </div>
+        </div>
       )}
 
       {analyzing && (
