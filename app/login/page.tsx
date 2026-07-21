@@ -15,10 +15,10 @@ export default function LoginPage() {
   useEffect(() => {
     const checkUser = async () => {
       const {
-        data: { user },
-      } = await supabase.auth.getUser()
+        data: { session },
+      } = await supabase.auth.getSession()
 
-      if (user) {
+      if (session) {
         router.push("/")
       }
     }
@@ -34,7 +34,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: "http://192.168.4.62:3000",
+        emailRedirectTo: process.env.NEXT_PUBLIC_APP_URL,
       },
     })
 

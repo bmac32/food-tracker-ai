@@ -149,7 +149,7 @@ export default function SharePage() {
       ) : (
         <>
           <p className="text-xs text-[#9AA3B2]">
-            Reply to Bridget
+            Reply to {data.sender_name || "sender"}
           </p>
           
           <textarea

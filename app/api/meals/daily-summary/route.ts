@@ -16,23 +16,21 @@ export async function GET() {
     .gte("created_at", today.toISOString())
 
   let calories = 0
+  let protein = 0
+  let carbs = 0
+  let fat = 0
 
-  data?.forEach((meal:any) => {
-
-    const text = meal.ai_analysis?.nutrition_insight || ""
-
-    const match = text.match(/\d+/)
-
-    if (match) {
-      calories += parseInt(match[0])
-    }
-
+  data?.forEach((meal: any) => {
+    calories += Number(meal.calories) || 0
+    protein += Number(meal.protein) || 0
+    carbs += Number(meal.carbs) || 0
+    fat += Number(meal.fat) || 0
   })
 
   return Response.json({
     calories,
-    protein: 0,
-    carbs: 0,
-    fat: 0
+    protein,
+    carbs,
+    fat
   })
 }

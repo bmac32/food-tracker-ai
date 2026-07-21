@@ -9,6 +9,15 @@ const supabase = createClient(
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+function escapeHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null)
@@ -39,16 +48,19 @@ export async function POST(req: Request) {
     const shareId = data.id
 
     // 2. Create link
-    const link = `http://192.168.4.66:3000/share/${shareId}`
+    const link = `${process.env.NEXT_PUBLIC_APP_URL}/share/${shareId}`
 
     // 3. Send email
+    const safeSenderName = escapeHtml(senderName)
+    const safeMessage = message ? escapeHtml(message) : ""
+
     const emailRes = await resend.emails.send({
       from: "FoodTracker <onboarding@resend.dev>",
       to: recipientEmail,
       subject: `${senderName} shared a meal with you`,
       html: `
-        <p><strong>${senderName}</strong> shared a meal with you</p>
-        ${message ? `<p>“${message}”</p>` : ""}
+        <p><strong>${safeSenderName}</strong> shared a meal with you</p>
+        ${safeMessage ? `<p>“${safeMessage}”</p>` : ""}
         <a href="${link}">View meal</a>
       `,
     })
