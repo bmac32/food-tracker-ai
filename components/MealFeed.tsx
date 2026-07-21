@@ -260,13 +260,13 @@ export default function MealFeed({
       <div className="mt-8 space-y-6">
 
         {mergedMeals.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center rounded-2xl border border-dashed border-[#232734] bg-[#171A21]/40 animate-fade-in">
-            <div className="w-12 h-12 rounded-full bg-[#232734] flex items-center justify-center">
-              <UtensilsCrossed size={20} className="text-[#6B7280]" />
+          <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center rounded-[22px] border border-dashed border-hair-strong bg-surface/40 animate-fade-in">
+            <div className="w-12 h-12 rounded-full bg-surface-2 flex items-center justify-center">
+              <UtensilsCrossed size={20} className="text-ink-faint" />
             </div>
             <div>
-              <p className="text-sm text-[#E6E8EC] font-medium">No meals or workouts logged yet</p>
-              <p className="text-xs text-[#6B7280] mt-1">Log a meal or a workout above to get started</p>
+              <p className="text-sm text-ink font-medium">No meals or workouts logged yet</p>
+              <p className="text-xs text-ink-faint mt-1">Log a meal or a workout above to get started</p>
             </div>
           </div>
         )}
@@ -310,10 +310,10 @@ export default function MealFeed({
           return (
             <div
               key={meal.id || meal.created_at}
-              className={`bg-[#171A21] border border-[#232734] rounded-2xl overflow-hidden transition-all duration-300 animate-fade-slide-up ${
+              className={`bg-surface border border-hair rounded-[22px] overflow-hidden transition-all duration-300 ease-spring animate-fade-slide-up ${
                 isDeleting
                   ? "opacity-0 scale-95"
-                  : "opacity-100 scale-100 hover:scale-[1.01] hover:border-[#2c313d] hover:shadow-lg hover:shadow-black/20"
+                  : "opacity-100 scale-100 hover:scale-[1.01] active:scale-[0.99] hover:border-hair-strong hover:shadow-lg hover:shadow-black/20"
               }`}
             >
               <div className="relative">
@@ -333,34 +333,36 @@ export default function MealFeed({
 
                     setEditIngredients(parsed?.foods || [])
                   }}
-                  className="absolute top-3 left-3 z-10 w-9 h-9 rounded-full bg-black/40 flex items-center justify-center text-white transition-all duration-150 hover:bg-black/60 active:scale-90"
+                  className="absolute top-3 left-3 z-10 w-9 h-9 rounded-full bg-black/45 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink transition-all duration-150 ease-spring hover:bg-black/60 active:scale-90"
                 >
                   <SlidersHorizontal size={16} />
                 </button>
 
-                <button
-                  onClick={() => handleShare(meal)}
-                  className={`absolute top-3 right-12 z-10 w-8 h-8 rounded-full flex items-center justify-center text-white transition-all duration-200 active:scale-90 ${
-                  isUnseen
-                    ? "bg-purple-500/40 backdrop-blur-md border border-purple-400/50 shadow-[0_0_10px_rgba(168,85,247,0.4)] hover:bg-purple-500/50"
-                    : "bg-black/50 hover:bg-black/70"
-                }`}
-                >
-                  <Send
-                    size={16}
-                    className={hasInsight ? "opacity-100" : "opacity-90"}
-                  />
-                </button>
+                <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+                  <button
+                    onClick={() => handleShare(meal)}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-ink transition-all duration-200 ease-spring active:scale-90 ${
+                    isUnseen
+                      ? "bg-purple-500/40 backdrop-blur-md border border-purple-400/50 shadow-[0_0_10px_rgba(168,85,247,0.4)] hover:bg-purple-500/50"
+                      : "bg-black/45 backdrop-blur-md border border-white/10 hover:bg-cal/25 hover:border-cal/40"
+                  }`}
+                  >
+                    <Send
+                      size={16}
+                      className={hasInsight ? "opacity-100" : "opacity-90"}
+                    />
+                  </button>
 
-                <button
-                  onClick={() => handleDelete(meal)}
-                  className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center text-white transition-all duration-150 hover:bg-red-500/40 active:scale-90"
-                >
-                  ✕
-                </button>
+                  <button
+                    onClick={() => handleDelete(meal)}
+                    className="w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink transition-all duration-150 ease-spring hover:bg-burn/30 hover:border-burn/50 active:scale-90"
+                  >
+                    ✕
+                  </button>
+                </div>
 
                 <div className="absolute bottom-3 left-4 right-4">
-                  <h2 className="text-white text-base font-semibold">
+                  <h2 className="text-ink text-base font-bold tracking-tight">
                     {ai?.meal_name || "Meal"}
                   </h2>
                 </div>
@@ -375,7 +377,7 @@ export default function MealFeed({
                       {editIngredients.map((ing, i) => (
                         <span
                           key={i}
-                          className="bg-[#232734] px-2 py-1 rounded-full text-xs text-white flex items-center gap-1 transition-colors duration-150 hover:bg-[#2A2F3A]"
+                          className="bg-surface-2 px-2 py-1 rounded-full text-xs text-ink flex items-center gap-1 transition-colors duration-150 hover:bg-white/10"
                         >
                           {ing}
                           <button
@@ -384,7 +386,7 @@ export default function MealFeed({
                                 prev.filter((_, idx) => idx !== i)
                               )
                             }
-                            className="ml-1 text-[#9AA3B2] transition-all duration-150 hover:text-white active:scale-90"
+                            className="ml-1 text-ink-dim transition-all duration-150 ease-spring hover:text-ink active:scale-90"
                           >
                             ✕
                           </button>
@@ -397,7 +399,7 @@ export default function MealFeed({
                         value={newIngredient}
                         onChange={(e) => setNewIngredient(e.target.value)}
                         placeholder="Add ingredient..."
-                        className="flex-1 bg-[#232734] rounded-xl px-3 py-2 text-sm text-white outline-none transition focus:ring-1 focus:ring-white/30"
+                        className="flex-1 bg-surface-2 rounded-xl px-3 py-2 text-sm text-ink outline-none transition focus:ring-1 focus:ring-ink/30"
                       />
                       <button
                         onClick={() => {
@@ -405,16 +407,16 @@ export default function MealFeed({
                           setEditIngredients((prev) => [...prev, newIngredient])
                           setNewIngredient("")
                         }}
-                        className="px-3 rounded-xl bg-white text-black text-sm transition-all duration-150 hover:bg-white/90 active:scale-[0.97]"
+                        className="px-3 rounded-xl bg-ink text-ground text-sm transition-all duration-150 ease-spring hover:bg-ink/90 active:scale-[0.97]"
                       >
                         Add
                       </button>
                     </div>
-                    <div className="border-t border-[#2A2F3A]/60 mt-5 mb-3" />
+                    <div className="border-t border-hair mt-5 mb-3" />
                     <textarea
                       value={editNote}
                       onChange={(e) => setEditNote(e.target.value)}
-                      className="w-full bg-[#232734] rounded-xl p-3 text-sm text-white mt-4 outline-none transition focus:ring-1 focus:ring-white/30"
+                      className="w-full bg-surface-2 rounded-xl p-3 text-sm text-ink mt-4 outline-none transition focus:ring-1 focus:ring-ink/30"
                     />
 
                     <div className="flex gap-2">
@@ -500,10 +502,10 @@ export default function MealFeed({
 
                         }}
                         className={`
-                          flex-1 py-2 rounded-lg text-sm transition-all duration-200
+                          flex-1 py-2 rounded-lg text-sm transition-all duration-200 ease-spring
                           ${isSavingEdit
-                            ? "bg-[#2A2F3A] text-[#6B7280] cursor-not-allowed"
-                            : "bg-white text-black hover:bg-white/90 active:scale-[0.97]"
+                            ? "bg-surface-2 text-ink-faint cursor-not-allowed"
+                            : "bg-ink text-ground hover:bg-ink/90 active:scale-[0.97]"
                           }
                         `}
                         disabled={isSavingEdit}                      >
@@ -512,7 +514,7 @@ export default function MealFeed({
 
                       <button
                         onClick={() => setEditingMealId(null)}
-                        className="flex-1 py-2 rounded-lg bg-[#232734] text-white text-sm transition-all duration-150 hover:bg-[#2A2F3A] active:scale-[0.97]"
+                        className="flex-1 py-2 rounded-lg bg-surface-2 text-ink text-sm transition-all duration-150 ease-spring hover:bg-white/10 active:scale-[0.97]"
                       >
                         Cancel
                       </button>
@@ -522,16 +524,16 @@ export default function MealFeed({
                   <div>
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       {ai?.foods?.slice(0, 6).map((food: string, i: number) => (
-                        <span key={i} className="bg-[#232734] px-2 py-[3px] rounded-full text-[11px]">
+                        <span key={i} className="bg-surface-2 px-2 py-[3px] rounded-full text-[11px] text-ink-dim">
                           {food}
                         </span>
                       ))}
                     </div>
 
-                    {meal.note && <p className="text-sm text-white">{meal.note}</p>}
-                    
+                    {meal.note && <p className="text-sm text-ink">{meal.note}</p>}
+
                     {openInsightMealId === meal.id && (
-                      <div className="mt-2 p-3 rounded-xl bg-[#0F1115] text-sm text-white border border-[#232734]">
+                      <div className="mt-2 p-3 rounded-xl bg-ground text-sm text-ink border border-hair">
                         {
                           meal.shared_meals?.find(
                             (s: any) => s.reply_message && s.reply_message.length > 0
@@ -540,20 +542,20 @@ export default function MealFeed({
                       </div>
                     )}
 
-                    <div className="flex justify-between text-[11px] text-[#9AA3B2] pt-1.5">
-                      <span>{ai?.calories || 0} cal</span>
-                      <span>{ai?.protein || 0} p</span>
-                      <span>{ai?.carbs || 0} c</span>
-                      <span>{ai?.fat || 0} f</span>
+                    <div className="flex justify-between text-[11px] font-semibold tabular-nums pt-1.5">
+                      <span className="text-cal">{ai?.calories || 0} cal</span>
+                      <span className="text-protein">{ai?.protein || 0} p</span>
+                      <span className="text-carb">{ai?.carbs || 0} c</span>
+                      <span className="text-fat">{ai?.fat || 0} f</span>
                     </div>
 
                     {hasInsight && (
-                      <div className="text-[11px] text-[#9AA3B2] pt-2 italic">
+                      <div className="text-[11px] text-ink-faint pt-2 italic">
                         Insight received
                       </div>
                     )}
 
-                    <div className="text-[10px] text-right pt-1">
+                    <div className="text-[10px] text-ink-faint text-right pt-1">
                       {new Date(meal.created_at).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -570,17 +572,17 @@ export default function MealFeed({
 
       {sharingMeal && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-end animate-fade-in">
-          <div className="w-full bg-[#171A21] border-t border-[#232734] rounded-t-3xl p-6 text-white relative animate-fade-slide-up">
+          <div className="w-full bg-surface border-t border-hair rounded-t-[28px] p-6 text-ink relative animate-fade-slide-up">
 
             {/* ✅ ADD THIS BUTTON RIGHT HERE */}
             <button
               onClick={() => setSharingMeal(null)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#232734] flex items-center justify-center text-[#9AA3B2] transition-all duration-150 hover:bg-[#2A2F3A] hover:text-white active:scale-[0.95]"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center text-ink-dim transition-all duration-150 ease-spring hover:bg-white/10 hover:text-ink active:scale-[0.9]"
             >
               ✕
             </button>
 
-            <p className="text-sm text-[#9AA3B2] mb-3">
+            <p className="text-sm text-ink-dim mb-3">
               Share with someone
             </p>
 
@@ -588,25 +590,25 @@ export default function MealFeed({
               value={recipientEmail}
               onChange={(e) => setRecipientEmail(e.target.value)}
               placeholder="Enter email"
-              className="w-full p-3 rounded-xl bg-[#0F1115] border border-[#232734] text-white placeholder-[#6B7280] mb-3 outline-none transition focus:border-white/40"
+              className="w-full p-3 rounded-xl bg-ground border border-hair text-ink placeholder-ink-faint mb-3 outline-none transition focus:border-ink/40"
             />
 
             <textarea
               value={shareMessage}
               onChange={(e) => setShareMessage(e.target.value)}
               placeholder="Add a note (optional)"
-              className="w-full p-3 rounded-xl bg-[#0F1115] border border-[#232734] text-white placeholder-[#6B7280] mb-4 outline-none transition focus:border-white/40"
+              className="w-full p-3 rounded-xl bg-ground border border-hair text-ink placeholder-ink-faint mb-4 outline-none transition focus:border-ink/40"
             />
 
             <button
               onClick={handleSendShare}
               disabled={!recipientEmail}
-              className={`w-full py-2 rounded-xl transition-all duration-200 ${
+              className={`w-full py-2 rounded-xl transition-all duration-200 ease-spring ${
                 shareSent
-                  ? "bg-white/80 text-black scale-[0.98]"
+                  ? "bg-ink/80 text-ground scale-[0.98]"
                   : recipientEmail
-                  ? "bg-white text-black hover:bg-white/90 active:scale-[0.98]"
-                  : "bg-[#232734] text-[#6B7280] cursor-not-allowed"
+                  ? "bg-ink text-ground hover:bg-ink/90 active:scale-[0.98]"
+                  : "bg-surface-2 text-ink-faint cursor-not-allowed"
               }`}
             >
               {shareSent ? "Sent" : "Send"}

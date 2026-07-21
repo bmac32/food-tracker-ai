@@ -121,26 +121,26 @@ export default function WorkoutLogger({ open, onClose, onSaved }: Props) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in p-4">
       {step === "type" && (
-        <div className="bg-[#171A21] border border-[#232734] rounded-2xl p-6 w-full max-w-sm space-y-4 relative animate-fade-scale-in">
+        <div className="bg-surface border border-hair rounded-[22px] p-6 w-full max-w-sm space-y-4 relative animate-fade-scale-in">
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur flex items-center justify-center text-white text-sm transition-all duration-150 hover:bg-black/70 active:scale-90"
+            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink text-sm transition-all duration-150 ease-spring hover:bg-black/70 active:scale-90"
           >
             ✕
           </button>
 
-          <h2 className="text-lg font-semibold text-white">Log a workout</h2>
-          <p className="text-xs text-[#9AA3B2] -mt-3">What did you do?</p>
+          <h2 className="text-lg font-bold text-ink">Log a workout</h2>
+          <p className="text-xs text-ink-faint -mt-3">What did you do?</p>
 
           <div className="grid grid-cols-2 gap-3">
             {WORKOUT_TYPES.map(({ value, label, icon: Icon }) => (
               <button
                 key={value}
                 onClick={() => handlePickType(value)}
-                className="flex flex-col items-center gap-2 py-4 rounded-xl border border-[#232734] transition-all duration-150 hover:border-[#3a4152] hover:bg-[#1b1f28] active:scale-[0.97]"
+                className="flex flex-col items-center gap-2 py-4 rounded-xl border border-hair transition-all duration-150 ease-spring hover:border-burn/40 hover:bg-surface-2 active:scale-[0.97]"
               >
-                <Icon size={20} className="text-[#E6E8EC]" />
-                <span className="text-xs text-[#E6E8EC]">{label}</span>
+                <Icon size={20} className="text-ink" />
+                <span className="text-xs text-ink">{label}</span>
               </button>
             ))}
           </div>
@@ -148,22 +148,22 @@ export default function WorkoutLogger({ open, onClose, onSaved }: Props) {
       )}
 
       {step === "duration" && workoutType && (
-        <div className="bg-[#171A21] border border-[#232734] rounded-2xl p-6 w-full max-w-sm space-y-4 relative animate-fade-scale-in">
+        <div className="bg-surface border border-hair rounded-[22px] p-6 w-full max-w-sm space-y-4 relative animate-fade-scale-in">
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur flex items-center justify-center text-white text-sm transition-all duration-150 hover:bg-black/70 active:scale-90"
+            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink text-sm transition-all duration-150 ease-spring hover:bg-black/70 active:scale-90"
           >
             ✕
           </button>
 
           <button
             onClick={() => setStep("type")}
-            className="text-xs text-[#9AA3B2] hover:text-white active:scale-95 transition"
+            className="text-xs text-ink-faint hover:text-ink active:scale-95 transition"
           >
             ‹ Back
           </button>
 
-          <h2 className="text-lg font-semibold text-white">
+          <h2 className="text-lg font-bold text-ink">
             How long was it?
           </h2>
 
@@ -174,16 +174,16 @@ export default function WorkoutLogger({ open, onClose, onSaved }: Props) {
             value={duration}
             onChange={(e) => setDuration(e.target.value)}
             placeholder="Duration (minutes)"
-            className="w-full bg-[#0F1115] border border-[#232734] rounded-xl px-3 py-3 text-sm text-white outline-none transition focus:border-white/40"
+            className="w-full bg-ground border border-hair rounded-xl px-3 py-3 text-sm text-ink outline-none transition focus:border-ink/40"
           />
 
           <button
             onClick={handleConfirmDuration}
             disabled={!duration || parseFloat(duration) <= 0}
-            className={`w-full rounded-lg py-2 transition-all duration-200 active:scale-[0.98] ${
+            className={`w-full rounded-lg py-2 transition-all duration-200 ease-spring active:scale-[0.98] ${
               duration && parseFloat(duration) > 0
-                ? "bg-white text-black hover:bg-white/90"
-                : "bg-[#232734] text-[#6B7280] cursor-not-allowed"
+                ? "bg-ink text-ground hover:bg-ink/90"
+                : "bg-surface-2 text-ink-faint cursor-not-allowed"
             }`}
           >
             Continue
@@ -192,11 +192,11 @@ export default function WorkoutLogger({ open, onClose, onSaved }: Props) {
       )}
 
       {step === "loading" && (
-        <div className="bg-[#171A21] border border-[#232734] rounded-2xl p-8 w-full max-w-sm flex flex-col items-center gap-3 animate-fade-scale-in">
-          <div className="w-12 h-12 rounded-full bg-white/10 border border-white/10 backdrop-blur flex items-center justify-center">
-            <Sparkles size={20} className="text-white animate-pulse-soft" />
+        <div className="bg-surface border border-hair rounded-[22px] p-8 w-full max-w-sm flex flex-col items-center gap-3 animate-fade-scale-in">
+          <div className="w-12 h-12 rounded-full bg-burn/15 border border-burn/30 backdrop-blur flex items-center justify-center">
+            <Sparkles size={20} className="text-burn animate-pulse-soft" />
           </div>
-          <p className="text-sm text-white font-medium">
+          <p className="text-sm text-ink font-medium">
             Getting your workout ready...
           </p>
         </div>

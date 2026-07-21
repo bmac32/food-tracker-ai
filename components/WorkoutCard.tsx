@@ -85,10 +85,10 @@ export default function WorkoutCard({
 
   return (
     <div
-      className={`bg-[#171A21] border border-[#232734] rounded-2xl overflow-hidden transition-all duration-300 animate-fade-slide-up ${
+      className={`bg-surface border border-hair rounded-[22px] overflow-hidden transition-all duration-300 ease-spring animate-fade-slide-up ${
         isDeleting
           ? "opacity-0 scale-95"
-          : "opacity-100 scale-100 hover:scale-[1.01] hover:border-[#2c313d] hover:shadow-lg hover:shadow-black/20"
+          : "opacity-100 scale-100 hover:scale-[1.01] active:scale-[0.99] hover:border-hair-strong hover:shadow-lg hover:shadow-black/20"
       }`}
     >
       <div className="relative">
@@ -98,27 +98,27 @@ export default function WorkoutCard({
 
         <button
           onClick={startEditing}
-          className="absolute top-3 left-3 z-10 w-9 h-9 rounded-full bg-black/40 flex items-center justify-center text-white transition-all duration-150 hover:bg-black/60 active:scale-90"
+          className="absolute top-3 left-3 z-10 w-9 h-9 rounded-full bg-black/45 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink transition-all duration-150 ease-spring hover:bg-black/60 active:scale-90"
         >
           <SlidersHorizontal size={16} />
         </button>
 
         <button
           onClick={onDelete}
-          className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center text-white transition-all duration-150 hover:bg-red-500/40 active:scale-90"
+          className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink transition-all duration-150 ease-spring hover:bg-burn/30 hover:border-burn/50 active:scale-90"
         >
           ✕
         </button>
 
-        <div className="absolute top-3 left-14 flex items-center gap-1.5 bg-orange-500/20 border border-orange-400/30 backdrop-blur-md px-2.5 py-1 rounded-full">
-          <Icon size={13} className="text-orange-300" />
-          <span className="text-xs font-medium text-orange-200">
+        <div className="absolute top-3 left-14 flex items-center gap-1.5 bg-burn/20 border border-burn/40 backdrop-blur-md px-2.5 py-1 rounded-full">
+          <Icon size={13} className="text-burn" />
+          <span className="text-xs font-bold text-[#ffb3c1]">
             {meta?.label || "Workout"}
           </span>
         </div>
 
         <div className="absolute bottom-3 left-4 right-4">
-          <h2 className="text-white text-base font-semibold">
+          <h2 className="text-ink text-base font-bold tracking-tight">
             {meta?.label || "Workout"} · {workout.duration_minutes} min
           </h2>
         </div>
@@ -128,26 +128,26 @@ export default function WorkoutCard({
         {isEditing ? (
           <div className="space-y-3">
             <div>
-              <p className="text-[11px] text-[#9AA3B2] mb-1">
+              <p className="text-[11px] text-ink-faint mb-1">
                 Duration (minutes)
               </p>
               <input
                 type="number"
                 value={editDuration}
                 onChange={(e) => handleDurationChange(e.target.value)}
-                className="w-full bg-[#232734] rounded-xl px-3 py-2 text-sm text-white outline-none transition focus:ring-1 focus:ring-white/30"
+                className="w-full bg-surface-2 rounded-xl px-3 py-2 text-sm text-ink outline-none transition focus:ring-1 focus:ring-ink/30"
               />
             </div>
 
             <div>
-              <p className="text-[11px] text-[#9AA3B2] mb-1">
+              <p className="text-[11px] text-ink-faint mb-1">
                 Calories burned
               </p>
               <input
                 type="number"
                 value={editCalories}
                 onChange={(e) => setEditCalories(Number(e.target.value) || 0)}
-                className="w-full bg-[#232734] rounded-xl px-3 py-2 text-sm text-white outline-none transition focus:ring-1 focus:ring-white/30"
+                className="w-full bg-surface-2 rounded-xl px-3 py-2 text-sm text-ink outline-none transition focus:ring-1 focus:ring-ink/30"
               />
             </div>
 
@@ -155,17 +155,17 @@ export default function WorkoutCard({
               value={editNote}
               onChange={(e) => setEditNote(e.target.value)}
               placeholder="Add a note..."
-              className="w-full bg-[#232734] rounded-xl p-3 text-sm text-white outline-none transition focus:ring-1 focus:ring-white/30"
+              className="w-full bg-surface-2 rounded-xl p-3 text-sm text-ink outline-none transition focus:ring-1 focus:ring-ink/30"
             />
 
             <div className="flex gap-2">
               <button
                 onClick={handleSaveEdit}
                 disabled={isSavingEdit}
-                className={`flex-1 py-2 rounded-lg text-sm transition-all duration-200 active:scale-[0.97] ${
+                className={`flex-1 py-2 rounded-lg text-sm transition-all duration-200 ease-spring active:scale-[0.97] ${
                   isSavingEdit
-                    ? "bg-[#2A2F3A] text-[#6B7280] cursor-not-allowed"
-                    : "bg-white text-black hover:bg-white/90"
+                    ? "bg-surface-2 text-ink-faint cursor-not-allowed"
+                    : "bg-ink text-ground hover:bg-ink/90"
                 }`}
               >
                 {isSavingEdit ? "Saving..." : "Save"}
@@ -173,7 +173,7 @@ export default function WorkoutCard({
 
               <button
                 onClick={() => setIsEditing(false)}
-                className="flex-1 py-2 rounded-lg bg-[#232734] text-white text-sm transition-all duration-150 hover:bg-[#2A2F3A] active:scale-[0.97]"
+                className="flex-1 py-2 rounded-lg bg-surface-2 text-ink text-sm transition-all duration-150 ease-spring hover:bg-white/10 active:scale-[0.97]"
               >
                 Cancel
               </button>
@@ -181,16 +181,18 @@ export default function WorkoutCard({
           </div>
         ) : (
           <>
-            <div className="flex items-center gap-1.5 text-orange-300 text-sm font-medium">
-              <Flame size={14} />
-              <span>{workout.calories_burned} cal burned</span>
+            <div className="flex items-center gap-1.5 text-sm font-bold tabular-nums">
+              <Flame size={14} className="text-burn" />
+              <span className="bg-gradient-to-r from-cal to-burn bg-clip-text text-transparent">
+                {workout.calories_burned} cal burned
+              </span>
             </div>
 
             {workout.note && (
-              <p className="text-sm text-white">{workout.note}</p>
+              <p className="text-sm text-ink">{workout.note}</p>
             )}
 
-            <div className="text-[10px] text-right text-[#6B7280] pt-1">
+            <div className="text-[10px] text-right text-ink-faint pt-1">
               {new Date(workout.created_at).toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",

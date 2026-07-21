@@ -1,14 +1,42 @@
 @import "tailwindcss";
 
+/* -------------------------
+   DESIGN TOKENS
+   Registered via @theme so Tailwind generates matching utilities:
+   bg-ground, bg-surface, bg-surface-2, text-ink, text-ink-dim,
+   text-ink-faint, border-hair, border-hair-strong, bg-cal/text-cal/etc,
+   ease-spring, ease-snap
+   ------------------------- */
+@theme {
+  --color-ground: #0a0c10;
+  --color-surface: #14161c;
+  --color-surface-2: #191c23;
+  --color-hair: rgba(255, 255, 255, 0.07);
+  --color-hair-strong: rgba(255, 255, 255, 0.14);
+  --color-ink: #f4f2ec;
+  --color-ink-dim: #a7abb6;
+  --color-ink-faint: #6b6f7a;
+
+  --color-cal: #ffb020;
+  --color-protein: #34e0a1;
+  --color-carb: #3da9fc;
+  --color-fat: #b084f5;
+  --color-burn: #ff4d6d;
+  --color-burn-2: #ff8a5b;
+
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-snap: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 :root {
-  --background: #0F1115;
-  --foreground: #E6E8EC;
+  --background: #0a0c10;
+  --foreground: #f4f2ec;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0F1115;
-    --foreground: #E6E8EC;
+    --background: #0a0c10;
+    --foreground: #f4f2ec;
   }
 }
 

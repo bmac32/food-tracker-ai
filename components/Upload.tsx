@@ -11,13 +11,13 @@ export default function Upload({ onFileSelect, onManualEntry }: Props) {
 
       {/* UPLOAD + CAMERA COMBINED */}
       <label className="block cursor-pointer">
-        <div className="bg-[#171A21] border border-dashed border-[#2a2f3a] rounded-2xl p-6 text-center transition hover:border-[#3a4152] hover:bg-[#1d212b] active:scale-[0.99]">
+        <div className="bg-surface border border-dashed border-hair-strong rounded-[22px] p-6 text-center transition-all duration-150 ease-spring hover:border-cal/40 hover:bg-surface-2 active:scale-[0.99]">
 
-          <p className="text-sm font-medium text-[#E6E8EC]">
+          <p className="text-sm font-bold text-ink">
             Add a meal
           </p>
 
-          <p className="text-xs text-[#9AA3B2] mt-1">
+          <p className="text-xs text-ink-faint mt-1">
             Take a photo or upload
           </p>
 
@@ -38,7 +38,7 @@ export default function Upload({ onFileSelect, onManualEntry }: Props) {
       {/* 🔥 MANUAL ENTRY (THIS WAS BROKEN) */}
       <button
         onClick={onManualEntry}
-        className="w-full text-sm text-[#9AA3B2] hover:text-white active:scale-[0.98] transition"
+        className="w-full text-sm text-ink-faint hover:text-ink active:scale-[0.98] transition"
       >
         Enter meal manually
       </button>

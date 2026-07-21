@@ -21,6 +21,105 @@ type Meal = {
   [key: string]: any
 }
 
+const CIRCUMFERENCE = 2 * Math.PI * 34
+
+const RING_COLOR: Record<string, string> = {
+  calories: "var(--color-cal)",
+  protein: "var(--color-protein)",
+  carbs: "var(--color-carb)",
+  fat: "var(--color-fat)",
+}
+
+function getMessage(type: string, total: number, goal: number) {
+  const diff = goal - total
+
+  if (diff > 0) {
+    if (type === "calories") return `${diff} cal left`
+    return `${diff}g left`
+  }
+
+  if (type === "protein") return "On track"
+  if (type === "calories") return `+${Math.abs(diff)} over`
+  return "Slightly high"
+}
+
+function useCountUp(target: number, duration = 900) {
+  const [value, setValue] = useState(0)
+
+  useEffect(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+    if (reduced) {
+      setValue(target)
+      return
+    }
+
+    let raf: number
+    let start: number | null = null
+
+    function step(ts: number) {
+      if (start === null) start = ts
+      const p = Math.min((ts - start) / duration, 1)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setValue(Math.round(target * eased))
+      if (p < 1) raf = requestAnimationFrame(step)
+    }
+
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [target, duration])
+
+  return value
+}
+
+function Ring({
+  label,
+  value,
+  goal,
+  progress,
+  type,
+}: {
+  label: string
+  value: number
+  goal: number
+  progress: number
+  type: string
+}) {
+  const capped = Math.min(progress, 1)
+  const color = RING_COLOR[type] || "var(--color-ink)"
+  const displayPct = useCountUp(Math.round(capped * 100))
+
+  return (
+    <div className="flex flex-col items-center transition-transform duration-200 ease-spring active:scale-95">
+      <div className="relative w-20 h-20">
+        <svg className="w-full h-full -rotate-90">
+          <circle cx="50%" cy="50%" r="34" stroke="var(--color-hair-strong)" strokeWidth="7" fill="none" />
+          <circle
+            cx="50%"
+            cy="50%"
+            r="34"
+            stroke={color}
+            strokeWidth="7"
+            fill="none"
+            strokeDasharray={CIRCUMFERENCE}
+            strokeDashoffset={CIRCUMFERENCE - capped * CIRCUMFERENCE}
+            strokeLinecap="round"
+            className="transition-[stroke-dashoffset] duration-700 ease-out"
+            style={{ filter: `drop-shadow(0 0 5px color-mix(in srgb, ${color} 55%, transparent))` }}
+          />
+        </svg>
+
+        <div className="absolute inset-0 flex items-center justify-center text-base font-extrabold tabular-nums text-ink">
+          {displayPct}%
+        </div>
+      </div>
+
+      <p className="text-xs mt-2 font-bold tracking-wide text-ink">{label}</p>
+      <p className="text-[11px] text-ink-faint">{getMessage(type, value, goal)}</p>
+    </div>
+  )
+}
+
 export default function DailySummary(props: Props) {
   const { refreshTrigger, currentDate, setCurrentDate, isCollapsed } = props
   const [meals, setMeals] = useState<Meal[]>([])
@@ -47,7 +146,7 @@ export default function DailySummary(props: Props) {
   const [goalType, setGoalType] = useState("maintain")
 
   const [isGenerating, setIsGenerating] = useState(false)
-  
+
   // -------------------------
   // LOAD GOALS
   // -------------------------
@@ -88,7 +187,7 @@ export default function DailySummary(props: Props) {
       .from("meals")
       .select("*")
       .gte("created_at", start.toISOString())
-      .lte("created_at", end.toISOString()) 
+      .lte("created_at", end.toISOString())
 
     if (error) {
       console.error("MEALS LOAD ERROR:", error)
@@ -183,33 +282,10 @@ export default function DailySummary(props: Props) {
     return () => clearTimeout(timeout)
   }, [progress])
 
-  const circumference = 2 * Math.PI * 36
-
-  // -------------------------
-  // COLORS
-  // -------------------------
-  const getColor = (type: string) => {
-    if (type === "protein") return "#6FCF97"
-    if (type === "calories") return "#E9B949"
-    if (type === "carbs") return "#5FA8D3"
-    if (type === "fat") return "#9B8AFB"
-    return "#E6E8EC"
-  }
-
-  // -------------------------
-  // MICROCOPY
-  // -------------------------
-  const getMessage = (type: string, total: number, goal: number) => {
-    const diff = goal - total
-
-    if (diff > 0) {
-      if (type === "calories") return `${diff} cal left`
-      return `${diff}g left`
-    }
-
-    if (type === "protein") return "On track"
-    if (type === "calories") return `+${Math.abs(diff)} over`
-    return "Slightly high"
+  const changeDay = (dir: "prev" | "next") => {
+    const newDate = new Date(currentDate)
+    newDate.setDate(currentDate.getDate() + (dir === "prev" ? -1 : 1))
+    setCurrentDate(newDate)
   }
 
   // -------------------------
@@ -275,84 +351,36 @@ export default function DailySummary(props: Props) {
       setSaving(false)
     }
   }
-const changeDay = (dir: "prev" | "next") => {
-  const newDate = new Date(currentDate)
-  newDate.setDate(currentDate.getDate() + (dir === "prev" ? -1 : 1))
-  setCurrentDate(newDate)
-}
-
-  // -------------------------
-  // RING
-  // -------------------------
-  const Ring = ({ label, value, goal, progress, type }: any) => {
-    const capped = Math.min(progress, 1)
-    const color = getColor(type)
-
-    return (
-      <div className="flex flex-col items-center">
-        <div className="relative w-20 h-20">
-          <div
-            className="absolute inset-0 rounded-full blur-[6px] opacity-20"
-            style={{ background: color }}
-          />
-
-          <svg className="w-full h-full -rotate-90">
-            <circle cx="50%" cy="50%" r="36" stroke="#232734" strokeWidth="8" fill="none" />
-            <circle
-              cx="50%"
-              cy="50%"
-              r="36"
-              stroke={color}
-              strokeWidth="8"
-              fill="none"
-              strokeDasharray={circumference}
-              strokeDashoffset={circumference - capped * circumference}
-              strokeLinecap="round"
-              className="transition-all duration-500"
-            />
-          </svg>
-
-          <div className="absolute inset-0 flex items-center justify-center text-lg font-semibold text-white">
-            {Math.round(progress * 100)}%
-          </div>
-        </div>
-
-        <p className="text-xs mt-2 font-semibold">{label}</p>
-        <p className="text-[11px] text-[#9AA3B2]">
-          {getMessage(type, value, goal)}
-        </p>
-      </div>
-    )
-  }
 
   return (
     <>
         <div
-            className={`fixed top-0 left-0 right-0 z-40 bg-[#0F1115]/95 backdrop-blur-md border-b border-[#232734]/60 transition-all duration-300 ${
+            className={`fixed top-0 left-0 right-0 z-40 bg-ground/95 backdrop-blur-md border-b border-hair transition-all duration-300 ${
             isCollapsed ? "space-y-2" : "space-y-4"
           }`}
-        >        
+        >
 
-        <div className="relative z-20 flex items-center justify-between max-w-md mx-auto px-5">
-  
+        <div className="relative z-20 flex items-center justify-between max-w-md mx-auto px-5 pt-1">
+
           {/* LEFT: EDIT */}
           <button
             onClick={() => setShowModal(true)}
-            className="text-xs text-[#6B7280] hover:text-white active:scale-95 transition pl-1"
+            className="text-xs text-ink-faint hover:text-ink active:scale-95 transition pl-1"
           >
             {goals?.calories ? "Edit" : "Set"}
           </button>
 
-          {/* CENTER: DATE */}
-          <div className="flex items-center gap-3">
+          {/* CENTER: DATE (absolutely centered so it's unaffected by the
+              unequal widths of Edit vs the profile avatar) */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-3 whitespace-nowrap">
             <button
               onClick={() => changeDay("prev")}
-              className="text-[#6B7280] hover:text-white active:scale-90 transition"
+              className="text-ink-faint hover:text-ink active:scale-90 transition-transform duration-150 ease-spring"
             >
               ‹
             </button>
 
-            <span className="text-base font-medium tracking-tight text-white">
+            <span className="text-base font-semibold tracking-tight text-ink">
               {currentDate.toLocaleDateString("en-US", {
                 month: "long",
                 day: "numeric",
@@ -362,7 +390,7 @@ const changeDay = (dir: "prev" | "next") => {
 
             <button
               onClick={() => changeDay("next")}
-              className="text-[#6B7280] hover:text-white active:scale-90 transition"
+              className="text-ink-faint hover:text-ink active:scale-90 transition-transform duration-150 ease-spring"
             >
               ›
             </button>
@@ -381,7 +409,7 @@ const changeDay = (dir: "prev" | "next") => {
             isCollapsed ? "scale-75 opacity-80" : "scale-100"
           }`}
         >
-          
+
           <Ring
             label="Cal"
             value={netCalories}
@@ -411,27 +439,21 @@ const changeDay = (dir: "prev" | "next") => {
             type="fat"
           />
         </div>
-
-        {caloriesBurned > 0 && (
-          <p className="text-center text-[11px] text-orange-300 mt-2 animate-fade-in">
-            🔥 {caloriesBurned} cal burned today — nice work!
-          </p>
-        )}
       </div>
     </div> {/* CLOSE space-y-4 */}
 
       {showModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
-          <div className="bg-[#171A21] border border-[#232734] rounded-2xl p-6 w-[90%] max-w-sm space-y-4 animate-fade-scale-in">
+          <div className="bg-surface border border-hair rounded-2xl p-6 w-[90%] max-w-sm space-y-4 animate-fade-scale-in">
 
-            <h2 className="text-lg font-semibold">Edit Goals</h2>
+            <h2 className="text-lg font-semibold text-ink">Edit Goals</h2>
 
             <input
               type="number"
               placeholder="Current weight (lbs)"
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
-              className="w-full bg-transparent border border-[#232734] rounded-lg px-3 py-2 outline-none transition focus:border-white/40"
+              className="w-full bg-transparent border border-hair-strong rounded-lg px-3 py-2 outline-none transition focus:border-ink/40 text-ink"
             />
 
             <div className="flex gap-2">
@@ -447,16 +469,16 @@ const changeDay = (dir: "prev" | "next") => {
                   <div key={type} className="flex-1 flex flex-col items-center">
                     <button
                       onClick={() => setGoalType(type)}
-                      className={`w-full py-2 rounded-lg capitalize transition-all duration-150 active:scale-[0.97] ${
+                      className={`w-full py-2 rounded-lg capitalize transition-all duration-150 ease-spring active:scale-[0.97] ${
                         goalType === type
-                          ? "bg-white text-black hover:bg-white/90"
-                          : "border border-[#232734] hover:border-[#3a4152] hover:bg-[#1b1f28]"
+                          ? "bg-ink text-ground hover:bg-ink/90"
+                          : "border border-hair-strong text-ink hover:border-ink-faint hover:bg-surface-2"
                       }`}
                     >
                       {type}
                     </button>
 
-                    <p className="text-[10px] text-[#6B7280] mt-1 text-center">
+                    <p className="text-[10px] text-ink-faint mt-1 text-center">
                       {label}
                     </p>
                   </div>
@@ -467,17 +489,17 @@ const changeDay = (dir: "prev" | "next") => {
             <button
               onClick={handleGenerate}
               disabled={!weight || isNaN(parseFloat(weight))}
-              className={`w-full py-2 rounded-lg transition-all duration-200 active:scale-[0.98] ${
+              className={`w-full py-2 rounded-lg transition-all duration-200 ease-spring active:scale-[0.98] ${
                 !weight || isNaN(parseFloat(weight))
-                  ? "bg-[#232734] text-[#6B7280] cursor-not-allowed"
-                  : "bg-white text-black hover:bg-white/90"
+                  ? "bg-surface-2 text-ink-faint cursor-not-allowed"
+                  : "bg-ink text-ground hover:bg-ink/90"
               }`}
             >
               {isGenerating ? "Generating..." : "Generate"}
             </button>
 
             {/* ✨ TRUST */}
-            <p className="text-xs text-[#9AA3AF] text-center">
+            <p className="text-xs text-ink-faint text-center">
               Based on general nutrition guidance (CDC, dietitian standards)
             </p>
 
@@ -486,49 +508,49 @@ const changeDay = (dir: "prev" | "next") => {
 
               {/* Calories */}
               <div className="space-y-1">
-                <p className="text-[11px] text-[#9AA3B2]">Calories</p>
+                <p className="text-[11px] text-ink-faint">Calories</p>
                 <input
                   value={goals.calories}
                   onChange={(e) =>
                     setGoals({ ...goals, calories: Number(e.target.value) })
                   }
-                  className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm outline-none transition focus:border-white/40"
+                  className="w-full bg-ground border border-hair-strong rounded-lg px-3 py-2 text-sm text-ink outline-none transition focus:border-ink/40"
                 />
               </div>
 
               {/* Protein */}
               <div className="space-y-1">
-                <p className="text-[11px] text-[#9AA3B2]">Protein (g)</p>
+                <p className="text-[11px] text-ink-faint">Protein (g)</p>
                 <input
                   value={goals.protein}
                   onChange={(e) =>
                     setGoals({ ...goals, protein: Number(e.target.value) })
                   }
-                  className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm outline-none transition focus:border-white/40"
+                  className="w-full bg-ground border border-hair-strong rounded-lg px-3 py-2 text-sm text-ink outline-none transition focus:border-ink/40"
                 />
               </div>
 
               {/* Carbs */}
               <div className="space-y-1">
-                <p className="text-[11px] text-[#9AA3B2]">Carbs (g)</p>
+                <p className="text-[11px] text-ink-faint">Carbs (g)</p>
                 <input
                   value={goals.carbs}
                   onChange={(e) =>
                     setGoals({ ...goals, carbs: Number(e.target.value) })
                   }
-                  className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm outline-none transition focus:border-white/40"
+                  className="w-full bg-ground border border-hair-strong rounded-lg px-3 py-2 text-sm text-ink outline-none transition focus:border-ink/40"
                 />
               </div>
 
               {/* Fat */}
               <div className="space-y-1">
-                <p className="text-[11px] text-[#9AA3B2]">Fat (g)</p>
+                <p className="text-[11px] text-ink-faint">Fat (g)</p>
                 <input
                   value={goals.fat}
                   onChange={(e) =>
                     setGoals({ ...goals, fat: Number(e.target.value) })
                   }
-                  className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm outline-none transition focus:border-white/40"
+                  className="w-full bg-ground border border-hair-strong rounded-lg px-3 py-2 text-sm text-ink outline-none transition focus:border-ink/40"
                 />
               </div>
 
@@ -537,7 +559,7 @@ const changeDay = (dir: "prev" | "next") => {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setShowModal(false)}
-                className="flex-1 border border-[#232734] rounded-lg py-2 transition-all duration-150 hover:border-[#3a4152] hover:bg-[#1b1f28] active:scale-[0.98]"
+                className="flex-1 border border-hair-strong text-ink rounded-lg py-2 transition-all duration-150 ease-spring hover:border-ink-faint hover:bg-surface-2 active:scale-[0.98]"
               >
                 Cancel
               </button>
@@ -545,10 +567,10 @@ const changeDay = (dir: "prev" | "next") => {
               <button
                 onClick={saveGoals}
                 disabled={saving}
-                className={`flex-1 rounded-lg py-2 transition-all duration-200 active:scale-[0.98] ${
+                className={`flex-1 rounded-lg py-2 transition-all duration-200 ease-spring active:scale-[0.98] ${
                   saving
-                    ? "bg-[#232734] text-[#6B7280] cursor-not-allowed"
-                    : "bg-white text-black hover:bg-white/90"
+                    ? "bg-surface-2 text-ink-faint cursor-not-allowed"
+                    : "bg-ink text-ground hover:bg-ink/90"
                 }`}
               >
                 {saving ? "Saving..." : "Save"}

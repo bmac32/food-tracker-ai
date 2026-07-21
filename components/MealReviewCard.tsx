@@ -58,7 +58,7 @@ export default function MealReviewCard({
   return (
     <div
       className={`
-        bg-[#171A21] border border-[#232734] rounded-2xl overflow-hidden
+        bg-surface border border-hair rounded-[22px] overflow-hidden
         animate-fade-slide-up
         transition-all duration-500
         ${saveSuccess ? "scale-[0.98] opacity-60" : ""}
@@ -71,14 +71,14 @@ export default function MealReviewCard({
         {/* CANCEL PREVIEW */}
         <button
           onClick={onCancel}
-          className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white text-sm transition-all duration-150 hover:bg-black/60 hover:scale-110 active:scale-90"
+          className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink text-sm transition-all duration-150 ease-spring hover:bg-black/60 hover:scale-110 active:scale-90"
         >
           ✕
         </button>
 
   {/* shimmer (only briefly) */}
   {!imgLoaded && (
-    <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-[#1a1f2b] via-[#222838] to-[#1a1f2b]" />
+    <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-surface via-surface-2 to-surface" />
   )}
 
   <img
@@ -95,7 +95,7 @@ export default function MealReviewCard({
     className={`
       w-full h-[340px] object-cover
       transition-opacity duration-500
-      ${imgLoaded ? "opacity-100" : "opacity-100"} 
+      ${imgLoaded ? "opacity-100" : "opacity-100"}
     `}
   />
 
@@ -104,7 +104,7 @@ export default function MealReviewCard({
 
   {/* title */}
   <div className="absolute bottom-3 left-4 right-4">
-    <h2 className="text-white text-lg font-semibold">
+    <h2 className="text-ink text-lg font-bold tracking-tight">
       {analysis.meal_name}
     </h2>
   </div>
@@ -115,18 +115,18 @@ export default function MealReviewCard({
 
         {/* INGREDIENTS */}
         <div>
-          <p className="text-xs text-[#9AA3B2] mb-2">Ingredients</p>
+          <p className="text-xs text-ink-faint mb-2">Ingredients</p>
 
           <div className="flex flex-wrap gap-2">
             {foods.map((food, i) => (
               <div
                 key={i}
-                className="flex items-center gap-1 bg-[#232734] px-2 py-1 rounded-full text-xs transition-colors duration-150 hover:bg-[#2A2F3A]"
+                className="flex items-center gap-1 bg-surface-2 px-2 py-1 rounded-full text-xs text-ink transition-colors duration-150 hover:bg-white/10"
               >
                 {food}
                 <button
                   onClick={() => handleRemove(i)}
-                  className="text-[#6B7280] transition-all duration-150 hover:text-white active:scale-90"
+                  className="text-ink-faint transition-all duration-150 ease-spring hover:text-ink active:scale-90"
                 >
                   ✕
                 </button>
@@ -139,11 +139,11 @@ export default function MealReviewCard({
               value={newFood}
               onChange={(e) => setNewFood(e.target.value)}
               placeholder="Add ingredient"
-              className="flex-1 bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-xs outline-none transition focus:border-white/40"
+              className="flex-1 bg-ground border border-hair rounded-lg px-3 py-2 text-xs text-ink outline-none transition focus:border-ink/40"
             />
             <button
               onClick={handleAdd}
-              className="px-3 py-2 bg-[#232734] rounded-lg text-xs transition-all duration-150 hover:bg-[#2A2F3A] active:scale-[0.97]"
+              className="px-3 py-2 bg-surface-2 text-ink rounded-lg text-xs transition-all duration-150 ease-spring hover:bg-white/10 active:scale-[0.97]"
             >
               Add
             </button>
@@ -151,17 +151,17 @@ export default function MealReviewCard({
         </div>
 
         {/* MACROS */}
-        <div className="flex justify-between text-xs pt-2 border-t border-[#232734]">
-          <span className="text-[#E9B949]">
+        <div className="flex justify-between text-xs font-semibold tabular-nums pt-2 border-t border-hair">
+          <span className="text-cal">
             {analysis.calories} calories
           </span>
-          <span className="text-[#6FCF97]">
+          <span className="text-protein">
             {analysis.protein} protein
           </span>
-          <span className="text-[#5FA8D3]">
+          <span className="text-carb">
             {analysis.carbs} carbs
           </span>
-          <span className="text-[#9B8AFB]">
+          <span className="text-fat">
             {analysis.fat} fat
           </span>
         </div>
@@ -171,7 +171,7 @@ export default function MealReviewCard({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Add a note..."
-          className="w-full bg-[#0F1115] border border-[#232734] rounded-lg px-3 py-2 text-sm outline-none transition focus:border-white/40"
+          className="w-full bg-ground border border-hair rounded-lg px-3 py-2 text-sm text-ink outline-none transition focus:border-ink/40"
         />
 
         {/* SAVE BUTTON */}
@@ -179,20 +179,20 @@ export default function MealReviewCard({
           onClick={handleSave}
           disabled={isSaving}
           className={`
-            w-full h-12 rounded-xl font-medium
-            transition-all duration-300 flex items-center justify-center gap-2
+            w-full h-12 rounded-xl font-bold
+            transition-all duration-300 ease-spring flex items-center justify-center gap-2
             ${
               isSaving
-                ? "bg-[#232734] text-[#9AA3B2] cursor-not-allowed"
+                ? "bg-surface-2 text-ink-faint cursor-not-allowed"
                 : saveSuccess
-                ? "bg-green-500 text-white"
-                : "bg-white text-black hover:bg-white/90"
+                ? "bg-protein text-ground"
+                : "bg-ink text-ground hover:bg-ink/90"
             }
             active:scale-[0.98]
           `}
         >
           {isSaving && (
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-ground border-t-transparent rounded-full animate-spin" />
           )}
 
           {!isSaving && !saveSuccess && "Save Meal"}
@@ -202,7 +202,7 @@ export default function MealReviewCard({
 
         {/* SUCCESS TEXT */}
         {saveSuccess && (
-          <p className="text-center text-xs text-green-400 animate-fade-in">
+          <p className="text-center text-xs text-protein animate-fade-in">
             Added to your day
           </p>
         )}

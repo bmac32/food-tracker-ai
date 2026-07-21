@@ -48,38 +48,38 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen bg-[#0F1115] text-[#E6E8EC] flex items-center justify-center px-4 overflow-hidden">
+    <div className="relative min-h-screen bg-ground text-ink flex items-center justify-center px-4 overflow-hidden">
 
       {/* ✨ ANIMATED GLOW BACKGROUND */}
       <div className="absolute inset-0 z-0">
-        <div className="absolute w-[500px] h-[500px] bg-blue-500/10 blur-[120px] rounded-full top-[-100px] left-[-100px] animate-pulse" />
-        <div className="absolute w-[400px] h-[400px] bg-purple-500/10 blur-[120px] rounded-full bottom-[-100px] right-[-100px] animate-pulse" />
+        <div className="absolute w-[500px] h-[500px] bg-carb/10 blur-[120px] rounded-full top-[-100px] left-[-100px] animate-pulse" />
+        <div className="absolute w-[400px] h-[400px] bg-fat/10 blur-[120px] rounded-full bottom-[-100px] right-[-100px] animate-pulse" />
       </div>
 
       <div className="relative z-10 w-full max-w-md space-y-6">
 
         {/* HEADER */}
         <div className="text-center space-y-2">
-          <div className="text-xs tracking-widest text-[#6B7280]">
+          <div className="text-xs tracking-widest text-ink-faint">
             AI NUTRITION
           </div>
 
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-2xl font-bold tracking-tight">
             Track smarter. Eat better.
           </h1>
 
-          <p className="text-sm text-[#A0A4AE]">
+          <p className="text-sm text-ink-dim">
             Snap a meal. Get instant nutrition insights.
           </p>
         </div>
 
         {/* CARD */}
-        <div className="bg-[#171A21]/80 backdrop-blur border border-[#232734] rounded-2xl p-6 space-y-4 shadow-xl">
+        <div className="bg-surface/80 backdrop-blur border border-hair rounded-[22px] p-6 space-y-4 shadow-xl">
 
           {!sent ? (
             <>
               <div className="space-y-1">
-                <label className="text-sm text-[#A0A4AE]">
+                <label className="text-sm text-ink-dim">
                   Email
                 </label>
 
@@ -88,7 +88,7 @@ export default function LoginPage() {
                   placeholder="you@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-[#0F1115] border border-[#232734] rounded-xl px-3 py-3 text-sm outline-none focus:border-white/40 transition"
+                  className="w-full bg-ground border border-hair rounded-xl px-3 py-3 text-sm text-ink outline-none focus:border-ink/40 transition"
                 />
               </div>
 
@@ -96,26 +96,26 @@ export default function LoginPage() {
               <button
                 onClick={handleLogin}
                 disabled={loading}
-                className="relative w-full bg-white text-black rounded-xl py-3 font-medium overflow-hidden transition-all duration-200 hover:bg-white/90 active:scale-[0.98] disabled:cursor-not-allowed"
+                className="relative w-full bg-ink text-ground rounded-xl py-3 font-bold overflow-hidden transition-all duration-200 ease-spring hover:bg-ink/90 active:scale-[0.98] disabled:cursor-not-allowed"
               >
                 {loading && (
-                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-[shimmer_1.2s_infinite]" />
+                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-black/10 to-transparent animate-[shimmer_1.2s_infinite]" />
                 )}
                 <span className="relative z-10">
                   {loading ? "Sending link..." : "Continue with email"}
                 </span>
               </button>
 
-              <p className="text-xs text-[#6B7280] text-center">
+              <p className="text-xs text-ink-faint text-center">
                 No password needed — secure magic link login
               </p>
             </>
           ) : (
             <div className="text-center space-y-2">
-              <p className="text-sm">
+              <p className="text-sm text-ink">
                 Check your email ✨
               </p>
-              <p className="text-xs text-[#6B7280]">
+              <p className="text-xs text-ink-faint">
                 Click the link to log in securely
               </p>
             </div>
@@ -123,7 +123,7 @@ export default function LoginPage() {
         </div>
 
         {/* VALUE PROPS */}
-        <div className="text-center text-xs text-[#6B7280] space-y-1">
+        <div className="text-center text-xs text-ink-faint space-y-1">
           <p>• AI analyzes your meals instantly</p>
           <p>• Track calories, protein, carbs, and fat</p>
           <p>• Build consistent, healthy habits</p>

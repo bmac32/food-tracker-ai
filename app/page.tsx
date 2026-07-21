@@ -278,13 +278,13 @@ export default function Home() {
   if (loading) return null
 
  return (
-  <div className="relative min-h-screen bg-[#0F1115] text-[#E6E8EC] overflow-hidden">
+  <div className="relative min-h-screen bg-ground text-ink overflow-hidden">
 
-    {/* ✨ SHIMMER BACKGROUND */}
+    {/* ✨ AURORA BACKGROUND — tied to the same cal/protein/carb/fat palette as the rings */}
     <div className="absolute inset-0 z-0">
-      <div className="absolute w-[500px] h-[500px] bg-blue-500/10 blur-[140px] rounded-full top-[-120px] left-[-120px] animate-pulse" />
-      <div className="absolute w-[400px] h-[400px] bg-purple-500/10 blur-[140px] rounded-full bottom-[-120px] right-[-120px] animate-pulse" />
-      <div className="absolute w-[300px] h-[300px] bg-teal-400/10 blur-[120px] rounded-full top-[40%] left-[60%] animate-pulse" />
+      <div className="absolute w-[500px] h-[500px] bg-cal/10 blur-[140px] rounded-full top-[-120px] left-[-120px] animate-pulse" />
+      <div className="absolute w-[400px] h-[400px] bg-fat/10 blur-[140px] rounded-full bottom-[-120px] right-[-120px] animate-pulse" />
+      <div className="absolute w-[300px] h-[300px] bg-carb/10 blur-[120px] rounded-full top-[40%] left-[60%] animate-pulse" />
     </div>
 
     <DailySummary
@@ -305,16 +305,16 @@ export default function Home() {
 
           <button
             onClick={() => setWorkoutLoggerOpen(true)}
-            className="w-full flex items-center justify-center gap-2 bg-[#171A21] border border-[#232734] rounded-2xl py-4 text-sm font-medium text-[#E6E8EC] transition-all duration-150 hover:border-orange-400/40 hover:bg-[#1d212b] active:scale-[0.99]"
+            className="w-full flex items-center justify-center gap-2 bg-surface border border-hair-strong rounded-[22px] py-4 text-sm font-bold text-ink transition-all duration-150 ease-spring hover:border-burn/40 hover:bg-surface-2 active:scale-[0.99]"
           >
-            <Dumbbell size={16} className="text-orange-300" />
+            <Dumbbell size={16} className="text-burn" />
             Log workout
           </button>
         </>
       )}
 
       {analyzing && (
-        <div className="bg-[#171A21] border border-[#232734] rounded-2xl overflow-hidden animate-fade-scale-in">
+        <div className="bg-surface border border-hair rounded-[22px] overflow-hidden animate-fade-scale-in">
           <div className="relative h-[220px] overflow-hidden">
             {photoUrl ? (
               <img
@@ -322,24 +322,24 @@ export default function Home() {
                 className="w-full h-full object-cover opacity-40"
               />
             ) : (
-              <div className="w-full h-full bg-gradient-to-br from-[#1a1f2b] via-[#171A21] to-[#141822]" />
+              <div className="w-full h-full bg-gradient-to-br from-surface via-surface to-surface-2" />
             )}
 
-            <div className="absolute inset-0 bg-gradient-to-t from-[#171A21] via-black/10 to-black/30" />
+            <div className="absolute inset-0 bg-gradient-to-t from-surface via-black/10 to-black/30" />
 
             <div className="absolute inset-0 -translate-x-full animate-shimmer-sweep bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
               <div className="w-12 h-12 rounded-full bg-white/10 border border-white/10 backdrop-blur flex items-center justify-center">
-                <Sparkles size={20} className="text-white animate-pulse-soft" />
+                <Sparkles size={20} className="text-ink animate-pulse-soft" />
               </div>
 
-              <div className="flex items-center gap-1.5 text-sm text-white font-medium">
+              <div className="flex items-center gap-1.5 text-sm text-ink font-medium">
                 <span>Analyzing your meal</span>
                 <span className="flex items-end gap-0.5 pb-0.5">
-                  <span className="w-1 h-1 rounded-full bg-white animate-bounce-dot [animation-delay:0ms]" />
-                  <span className="w-1 h-1 rounded-full bg-white animate-bounce-dot [animation-delay:160ms]" />
-                  <span className="w-1 h-1 rounded-full bg-white animate-bounce-dot [animation-delay:320ms]" />
+                  <span className="w-1 h-1 rounded-full bg-ink animate-bounce-dot [animation-delay:0ms]" />
+                  <span className="w-1 h-1 rounded-full bg-ink animate-bounce-dot [animation-delay:160ms]" />
+                  <span className="w-1 h-1 rounded-full bg-ink animate-bounce-dot [animation-delay:320ms]" />
                 </span>
               </div>
             </div>
@@ -348,16 +348,16 @@ export default function Home() {
           {/* SKELETON CONTENT */}
           <div className="p-4 space-y-4">
             <div className="flex flex-wrap gap-2">
-              <div className="h-6 w-16 rounded-full bg-[#232734] animate-pulse-soft" />
-              <div className="h-6 w-20 rounded-full bg-[#232734] animate-pulse-soft [animation-delay:120ms]" />
-              <div className="h-6 w-14 rounded-full bg-[#232734] animate-pulse-soft [animation-delay:240ms]" />
+              <div className="h-6 w-16 rounded-full bg-surface-2 animate-pulse-soft" />
+              <div className="h-6 w-20 rounded-full bg-surface-2 animate-pulse-soft [animation-delay:120ms]" />
+              <div className="h-6 w-14 rounded-full bg-surface-2 animate-pulse-soft [animation-delay:240ms]" />
             </div>
 
-            <div className="flex justify-between pt-3 border-t border-[#232734]">
-              <div className="h-3 w-10 rounded bg-[#232734] animate-pulse-soft" />
-              <div className="h-3 w-10 rounded bg-[#232734] animate-pulse-soft [animation-delay:80ms]" />
-              <div className="h-3 w-10 rounded bg-[#232734] animate-pulse-soft [animation-delay:160ms]" />
-              <div className="h-3 w-10 rounded bg-[#232734] animate-pulse-soft [animation-delay:240ms]" />
+            <div className="flex justify-between pt-3 border-t border-hair">
+              <div className="h-3 w-10 rounded bg-surface-2 animate-pulse-soft" />
+              <div className="h-3 w-10 rounded bg-surface-2 animate-pulse-soft [animation-delay:80ms]" />
+              <div className="h-3 w-10 rounded bg-surface-2 animate-pulse-soft [animation-delay:160ms]" />
+              <div className="h-3 w-10 rounded bg-surface-2 animate-pulse-soft [animation-delay:240ms]" />
             </div>
           </div>
         </div>
@@ -389,7 +389,7 @@ export default function Home() {
 
       {textInputMode && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
-          <div className="bg-[#171A21] border border-[#232734] rounded-2xl p-6 w-[90%] max-w-sm space-y-4 relative animate-fade-scale-in">
+          <div className="bg-surface border border-hair rounded-[22px] p-6 w-[90%] max-w-sm space-y-4 relative animate-fade-scale-in">
 
              {/* ❌ CLOSE BUTTON */}
             <button
@@ -397,7 +397,7 @@ export default function Home() {
                 setTextInputMode(false)
                 setMealText("")
               }}
-              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur flex items-center justify-center text-white text-sm transition-all duration-150 hover:bg-black/70 active:scale-90"
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink text-sm transition-all duration-150 ease-spring hover:bg-black/70 active:scale-90"
             >
               ✕
             </button>
@@ -406,16 +406,16 @@ export default function Home() {
               value={mealText}
               onChange={(e) => setMealText(e.target.value)}
               placeholder="Describe your meal"
-              className="w-full bg-[#0F1115] border border-[#232734] rounded-xl px-3 py-3 text-sm outline-none transition focus:border-white/40"
+              className="w-full bg-ground border border-hair rounded-xl px-3 py-3 text-sm text-ink outline-none transition focus:border-ink/40"
             />
 
             <button
               onClick={analyzeTextMeal}
               disabled={!mealText.trim()}
-              className={`w-full rounded-lg py-2 transition-all duration-200 ${
+              className={`w-full rounded-lg py-2 transition-all duration-200 ease-spring ${
                 mealText.trim()
-                  ? "bg-white text-black hover:bg-white/90 active:scale-[0.98]"
-                  : "bg-[#232734] text-[#6B7280] cursor-not-allowed"
+                  ? "bg-ink text-ground hover:bg-ink/90 active:scale-[0.98]"
+                  : "bg-surface-2 text-ink-faint cursor-not-allowed"
               }`}
             >
               Analyze
