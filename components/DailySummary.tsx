@@ -399,7 +399,12 @@ export default function DailySummary(props: Props) {
 
   return (
     <>
-        <div className="sticky top-0 z-40 bg-ground/95 backdrop-blur-md border-b border-hair">
+        <div
+          className="sticky top-0 z-40 bg-ground/95 backdrop-blur-md border-b border-hair"
+          // Notch/Dynamic Island clearance when the page runs edge-to-edge
+          // (viewport-fit=cover). env() is 0px where there's no notch.
+          style={{ paddingTop: "env(safe-area-inset-top)" }}
+        >
 
         <div className="relative z-20 flex items-center justify-between max-w-md mx-auto px-5 pt-1">
 

@@ -27,7 +27,7 @@ export async function GET(req: Request) {
 
   const accessKey = process.env.UNSPLASH_ACCESS_KEY
   if (!accessKey) {
-    return NextResponse.json({ url: FALLBACK })
+    return NextResponse.json({ url: FALLBACK, urls: [FALLBACK] })
   }
 
   try {
@@ -48,11 +48,22 @@ export async function GET(req: Request) {
     // Prefer organic results over sponsored ones.
     const organic = data.results.filter((r: any) => !r.sponsorship)
     const pool = organic.length > 0 ? organic : data.results
-    const pick = pool[Math.floor(Math.random() * pool.length)]
 
-    return NextResponse.json({ url: pick.urls.regular })
+    // Return a pool of candidates so the UI can offer a swipeable picker.
+    // Dedupe, cap at 6, keep `url` (first pick) for backward compat.
+    const urls = [
+      ...new Set(
+        pool
+          .map((r: any) => r.urls?.regular)
+          .filter((u: any) => typeof u === "string" && u.length > 0)
+      ),
+    ].slice(0, 6)
+
+    if (!urls.length) throw new Error("No usable results")
+
+    return NextResponse.json({ url: urls[0], urls })
   } catch (err) {
     console.error("UNSPLASH PROXY FAILED:", err)
-    return NextResponse.json({ url: FALLBACK })
+    return NextResponse.json({ url: FALLBACK, urls: [FALLBACK] })
   }
 }

@@ -85,7 +85,21 @@ silently won't arrive.
 2. Set `RESEND_FROM_EMAIL` in Vercel, e.g.
    `FoodTracker <hello@yourdomain.com>`, and redeploy.
 
-## 5. After deploying the new code
+## 5. Swipeable meal photos: `photo_candidates` column (2 minutes)
+
+The photo picker needs a place to store the pool of candidate images per
+meal. In **SQL Editor → New query**, paste the whole contents of
+`supabase/photo_candidates.sql` and hit **Run**. It adds a `photo_candidates`
+(jsonb) column to `meals` and backfills existing meals from their current
+`photo_url`, so old cards keep working.
+
+Uncomment the two queries at the bottom of the file to verify: the column
+should exist, and recent meals should show a JSON array of URLs.
+
+No RLS change needed — the existing per-user `meals` policies already cover
+the new column (owner-only read/write).
+
+## 6. After deploying the new code
 
 - [ ] SQL script applied and verification queries pass
 - [ ] Advisors show no security warnings on app tables

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabase"
-import { getSmartFoodImage } from "@/lib/getSmartFoodImage"
+import { getSmartFoodImages } from "@/lib/getSmartFoodImage"
 
 import { Sparkles, Dumbbell } from "lucide-react"
 
@@ -29,7 +29,13 @@ export default function Home() {
   
   const [note, setNote] = useState("")
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  // Swipeable photo candidates (auto-picked stock photos). The selected
+  // index is what gets saved as photo_url; the full pool is saved as
+  // photo_candidates so the feed can offer the same picker later.
+  const [photoUrls, setPhotoUrls] = useState<string[]>([])
+  const [photoIndex, setPhotoIndex] = useState(0)
+  const [refreshingPhotos, setRefreshingPhotos] = useState(false)
+  const photoUrl = photoUrls[photoIndex] ?? null
   const [analyzing, setAnalyzing] = useState(false)
 
   const [refreshFeed, setRefreshFeed] = useState(0)
@@ -116,7 +122,9 @@ export default function Home() {
         .getPublicUrl(fileName)
 
       const url = publicData?.publicUrl || ""
-      setPhotoUrl(url)
+      // User-uploaded photo: single candidate, no picker needed.
+      setPhotoUrls(url ? [url] : [])
+      setPhotoIndex(0)
 
       const res = await fetch("/api/meals/analyze", {
         method: "POST",
@@ -194,20 +202,38 @@ export default function Home() {
         fat: data?.fat ?? 5,
       }
 
-      // ✅ FIRST: get image
-      const imageUrl = await getSmartFoodImage(
+      // ✅ FIRST: get image candidates (swipeable picker)
+      const imageUrls = await getSmartFoodImages(
         parsedAnalysis.meal_name,
         parsedAnalysis.foods
       )
 
       // ✅ THEN: set both together
-      setPhotoUrl(imageUrl)
+      setPhotoUrls(imageUrls)
+      setPhotoIndex(0)
       setAnalysis(parsedAnalysis)
     } catch (err) {
       console.error(err)
     } finally {
       setAnalyzing(false)
       setMealText("")
+    }
+  }
+
+  // -------------------------
+  // 🔄 REFRESH PHOTO CANDIDATES ("none of these match")
+  // -------------------------
+  const refreshPhotoCandidates = async () => {
+    if (!analysis || refreshingPhotos) return
+    setRefreshingPhotos(true)
+    try {
+      const urls = await getSmartFoodImages(analysis.meal_name, analysis.foods)
+      setPhotoUrls(urls)
+      setPhotoIndex(0)
+    } catch (err) {
+      console.error("Photo refresh failed", err)
+    } finally {
+      setRefreshingPhotos(false)
     }
   }
 
@@ -232,10 +258,13 @@ export default function Home() {
       photoUrl ||
       "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
 
+    const candidates = photoUrls.length > 0 ? photoUrls : [safePhoto]
+
     const optimisticMeal = {
       id: Date.now(),
       created_at: new Date().toISOString(),
       photo_url: safePhoto,
+      photo_candidates: candidates,
       ai_analysis: analysis,
       calories: toNumber(analysis.calories),
       protein: toNumber(analysis.protein),
@@ -251,6 +280,7 @@ export default function Home() {
         {
           user_id: user.id, // ✅ ADD THIS LINE
           photo_url: safePhoto,
+          photo_candidates: candidates,
           note: optimisticMeal.note,
           meal_type: "meal",
           ai_analysis: optimisticMeal.ai_analysis,
@@ -275,7 +305,8 @@ export default function Home() {
         setSaveSuccess(false)
         setIsSaving(false)
         setAnalysis(null)
-        setPhotoUrl(null)
+        setPhotoUrls([])
+        setPhotoIndex(0)
         setNote("")
 
         // ✅ CLEAR optimistic meals AFTER DB sync
@@ -310,7 +341,7 @@ export default function Home() {
         scrollProgress={scrollProgress}
       />
 
-    <main className="relative z-10 max-w-xl mx-auto p-6 space-y-6 min-h-screen">
+    <main className="relative z-10 max-w-xl mx-auto px-6 pt-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] space-y-6 min-h-screen">
 
       {!photoUrl && !analysis && (
         <div className="flex gap-3">
@@ -442,7 +473,11 @@ export default function Home() {
 
       {photoUrl && analysis && (
         <MealReviewCard
-          imageUrl={photoUrl || ""}
+          images={photoUrls}
+          imageIndex={photoIndex}
+          onImageChange={setPhotoIndex}
+          onRefreshImages={refreshPhotoCandidates}
+          refreshingImages={refreshingPhotos}
           analysis={analysis}
           note={note}
           setNote={setNote}
@@ -451,7 +486,8 @@ export default function Home() {
           isSaving={isSaving}
           saveSuccess={saveSuccess}
           onCancel={() => {
-            setPhotoUrl(null)
+            setPhotoUrls([])
+            setPhotoIndex(0)
             setAnalysis(null)
             setAnalysisError(null)
           } } 

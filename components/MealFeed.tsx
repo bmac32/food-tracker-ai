@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../lib/supabase"
 import { Send, SlidersHorizontal, UtensilsCrossed } from "lucide-react"
+import { getSmartFoodImages } from "@/lib/getSmartFoodImage"
+import MealImageCarousel from "./MealImageCarousel"
 import WorkoutCard from "./WorkoutCard"
 
 type Props = {
@@ -217,6 +219,88 @@ export default function MealFeed({
   }
 
   const [openInsightMealId, setOpenInsightMealId] = useState<number | null>(null)
+  const [refreshingPhotoMealId, setRefreshingPhotoMealId] = useState<
+    number | string | null
+  >(null)
+
+  // ---- Swipeable photo candidates -------------------------------------
+  // New meals save a `photo_candidates` array; older meals fall back to
+  // their single photo_url. The selected index is derived from where
+  // photo_url sits inside the candidates, so no extra state is needed.
+  const MEAL_PHOTO_FALLBACK =
+    "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
+
+  const getCandidates = (meal: any): string[] => {
+    const c = meal.photo_candidates
+    if (Array.isArray(c) && c.length > 0) {
+      return c.filter((u: any) => typeof u === "string" && u.length > 0)
+    }
+    return [meal.photo_url || MEAL_PHOTO_FALLBACK]
+  }
+
+  const getPhotoIndex = (meal: any): number => {
+    const c = getCandidates(meal)
+    const i = c.indexOf(meal.photo_url)
+    return i >= 0 ? i : 0
+  }
+
+  // User-uploaded photos (Supabase storage) are their real meal — never
+  // offer stock-photo refresh on those.
+  const isUserUpload = (meal: any) =>
+    typeof meal.photo_url === "string" && meal.photo_url.includes("meal-photos")
+
+  const handlePhotoChange = async (meal: any, i: number) => {
+    const candidates = getCandidates(meal)
+    const url = candidates[i]
+    if (!url || url === meal.photo_url) return
+
+    setMeals((prev) =>
+      prev.map((m) => (m.id === meal.id ? { ...m, photo_url: url } : m))
+    )
+
+    // Optimistic (unsaved) meals sync on save; only persist real rows.
+    if (typeof meal.id !== "string") return
+    const { error } = await supabase
+      .from("meals")
+      .update({ photo_url: url })
+      .eq("id", meal.id)
+    if (error) console.error("PHOTO UPDATE ERROR:", error)
+  }
+
+  const handlePhotoRefresh = async (meal: any) => {
+    if (refreshingPhotoMealId !== null) return
+    let ai: any = null
+    try {
+      ai =
+        typeof meal.ai_analysis === "string"
+          ? JSON.parse(meal.ai_analysis)
+          : meal.ai_analysis
+    } catch {}
+
+    setRefreshingPhotoMealId(meal.id)
+    try {
+      const urls = await getSmartFoodImages(ai?.meal_name || "meal", ai?.foods)
+      if (!urls.length) return
+      setMeals((prev) =>
+        prev.map((m) =>
+          m.id === meal.id
+            ? { ...m, photo_url: urls[0], photo_candidates: urls }
+            : m
+        )
+      )
+      if (typeof meal.id === "string") {
+        const { error } = await supabase
+          .from("meals")
+          .update({ photo_url: urls[0], photo_candidates: urls })
+          .eq("id", meal.id)
+        if (error) console.error("PHOTO REFRESH ERROR:", error)
+      }
+    } catch (err) {
+      console.error("Photo refresh failed", err)
+    } finally {
+      setRefreshingPhotoMealId(null)
+    }
+  }
 
   const handleShare = (meal: any) => {
     const hasInsight =
@@ -301,9 +385,9 @@ export default function MealFeed({
           const isUnseen =
             hasInsight && !viewedInsights.includes(meal.id)
 
-          const imageSrc =
-            meal.photo_url ||
-            "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
+          const candidates = getCandidates(meal)
+          const photoIdx = getPhotoIndex(meal)
+          const canRefreshPhotos = !isUserUpload(meal)
 
           const isDeleting = deletingIds.includes(meal.id)
 
@@ -320,9 +404,19 @@ export default function MealFeed({
                 }`}
               >
               <div className="relative">
-                <img src={imageSrc} className="w-full h-[260px] object-cover" />
+                <MealImageCarousel
+                  images={candidates}
+                  index={photoIdx}
+                  onChange={(i) => handlePhotoChange(meal, i)}
+                  onRefresh={
+                    canRefreshPhotos ? () => handlePhotoRefresh(meal) : undefined
+                  }
+                  refreshing={refreshingPhotoMealId === meal.id}
+                  className="h-[260px]"
+                  alt={ai?.meal_name || "Meal"}
+                />
 
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
 
                 <button
                   onClick={() => {
@@ -364,7 +458,7 @@ export default function MealFeed({
                   </button>
                 </div>
 
-                <div className="absolute bottom-3 left-4 right-4">
+                <div className="absolute bottom-3 left-4 right-4 pointer-events-none">
                   <h2 className="text-ink text-base font-bold tracking-tight">
                     {ai?.meal_name || "Meal"}
                   </h2>
