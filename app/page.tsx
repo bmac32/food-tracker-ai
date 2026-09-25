@@ -23,25 +23,6 @@ type Analysis = {
   fat: number | string
 }
 
-// 🔥 Prompt helper (unchanged)
-const improvePrompt = (text: string) => {
-  const lower = text.toLowerCase()
-
-  if (lower.includes("celery") && lower.includes("ranch")) {
-    return "celery sticks with ranch dip"
-  }
-
-  if (lower.includes("cheese") && lower.includes("cracker")) {
-    return "cheese and crackers"
-  }
-
-  if (lower.includes("oatmeal") || lower.includes("oats")) {
-    return "oatmeal bowl"
-  }
-
-  return text
-}
-
 export default function Home() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -57,6 +38,10 @@ export default function Home() {
 
   const [textInputMode, setTextInputMode] = useState(false)
   const [mealText, setMealText] = useState("")
+
+  // Honest error state: shown when AI analysis fails instead of
+  // inventing nutrition data.
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
 
   const [isSaving, setIsSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -112,6 +97,7 @@ export default function Home() {
   const uploadAndAnalyze = async (file: File) => {
     setAnalyzing(true)
     setAnalysis(null)
+    setAnalysisError(null)
 
     try {
       const fileName = `${Date.now()}-${file.name}`
@@ -139,6 +125,12 @@ export default function Home() {
       })
 
       const data = await res.json()
+
+      // Honest failure: surface the error instead of showing fake macros.
+      if (!res.ok || data?.error) {
+        setAnalysisError(data?.error || "AI analysis failed — please try again.")
+        return
+      }
 
       const parsedAnalysis = {
         meal_name: data?.meal_name || "Meal",
@@ -170,6 +162,7 @@ export default function Home() {
 
     setAnalyzing(true)
     setTextInputMode(false)
+    setAnalysisError(null)
 
     try {
       const res = await fetch("/api/meals/analyze", {
@@ -179,6 +172,13 @@ export default function Home() {
       })
 
       const data = await res.json()
+
+      // Honest failure: surface the error instead of showing fake macros.
+      if (!res.ok || data?.error) {
+        setAnalysisError(data?.error || "AI analysis failed — please try again.")
+        setMealText("")
+        return
+      }
 
       const parsedAnalysis = {
         meal_name: data?.meal_name || mealText,
@@ -427,6 +427,19 @@ export default function Home() {
         </div>
       )}
 
+      {analysisError && !analyzing && (
+        <div className="mx-4 mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-ink animate-fade-slide-up">
+          <p className="font-semibold">Couldn't analyze that meal</p>
+          <p className="mt-1 text-ink-dim">{analysisError}</p>
+          <button
+            onClick={() => setAnalysisError(null)}
+            className="mt-2 text-xs font-medium text-ink underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {photoUrl && analysis && (
         <MealReviewCard
           imageUrl={photoUrl || ""}
@@ -440,6 +453,7 @@ export default function Home() {
           onCancel={() => {
             setPhotoUrl(null)
             setAnalysis(null)
+            setAnalysisError(null)
           } } 
         />
       )}

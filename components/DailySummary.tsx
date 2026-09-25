@@ -179,9 +179,16 @@ export default function DailySummary(props: Props) {
   // LOAD GOALS
   // -------------------------
   async function loadGoals() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) return
+
     const { data, error } = await supabase
       .from("user_goals")
       .select("*")
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(1)
 
@@ -359,9 +366,19 @@ export default function DailySummary(props: Props) {
     setSaving(true)
 
     try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        console.error("SAVE GOALS: not logged in")
+        setSaving(false)
+        return
+      }
+
       const { error } = await supabase
         .from("user_goals")
-        .insert([goals])
+        .insert([{ ...goals, user_id: user.id }])
 
       if (error) {
         console.error("SAVE ERROR:", error)

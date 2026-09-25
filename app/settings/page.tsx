@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [height, setHeight] = useState("")
   const [age, setAge] = useState("")
   const [activityLevel, setActivityLevel] = useState("Somewhat active")
+  const [displayName, setDisplayName] = useState("")
 
   useEffect(() => {
     const load = async () => {
@@ -43,6 +44,7 @@ export default function SettingsPage() {
         setHeight(data.height ? String(data.height) : "")
         setAge(data.age ? String(data.age) : "")
         setActivityLevel(data.activity_level || "Somewhat active")
+        setDisplayName(data.display_name || "")
       }
 
       setLoading(false)
@@ -65,6 +67,7 @@ export default function SettingsPage() {
     const { error } = await supabase.from("user_profiles").upsert(
       {
         user_id: user.id,
+        display_name: displayName.trim() || null,
         weight: weight ? Number(weight) : null,
         height: height ? Number(height) : null,
         age: age ? Number(age) : null,
@@ -106,6 +109,20 @@ export default function SettingsPage() {
         </p>
 
         <div className="bg-surface border border-hair rounded-[22px] p-6 space-y-4 animate-fade-slide-up">
+          <div className="space-y-1">
+            <p className="text-[11px] text-ink-faint">
+              Display name (shown when you share meals)
+            </p>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Your name"
+              maxLength={60}
+              className="w-full bg-ground border border-hair rounded-lg px-3 py-2 text-sm text-ink outline-none transition focus:border-ink/40"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <p className="text-[11px] text-ink-faint">Weight (lbs)</p>

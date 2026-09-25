@@ -57,7 +57,7 @@ export default function MealFeed({
           mealId: sharingMeal.id,
           recipientEmail,
           message: shareMessage,
-          senderName: "Bridget",
+          // senderName is derived server-side from the user's profile
         }),
       })
 
@@ -465,10 +465,19 @@ export default function MealFeed({
                           })
 
                           let updatedAI = null
+                          let analysisFailed = false
 
                           try {
                             const json = await res.json()
-                            updatedAI = json.data || json
+
+                            // Honest failure: keep the existing analysis rather
+                            // than saving an error payload as nutrition data.
+                            if (!res.ok || json?.error) {
+                              console.error("RE-ANALYZE FAILED:", json?.error)
+                              analysisFailed = true
+                            } else {
+                              updatedAI = json.data || json
+                            }
                           } catch (e) {
                             console.error("JSON ERROR:", e)
                             setIsSavingEdit(false)
@@ -477,21 +486,34 @@ export default function MealFeed({
                           console.log("AI RESULT:", updatedAI)
                           await supabase
                             .from("meals")
-                            .update({
-                              note: editNote,
-                              ai_analysis: updatedAI,
-                            })
+                            .update(
+                              analysisFailed
+                                ? { note: editNote } // keep existing ai_analysis
+                                : { note: editNote, ai_analysis: updatedAI }
+                            )
                             .eq("id", meal.id)
                           setMeals((prev) =>
                             prev.map((m) =>
-                              m.id === meal.id 
-                                ? { ...m, note: editNote, ai_analysis: updatedAI }
+                              m.id === meal.id
+                                ? {
+                                    ...m,
+                                    note: editNote,
+                                    ai_analysis: analysisFailed
+                                      ? m.ai_analysis
+                                      : updatedAI,
+                                  }
                                 : m
                             )
                           )
 
                           onDeleteSuccess?.()
                           setSaveSuccess(true)
+
+                          if (analysisFailed) {
+                            alert(
+                              "Couldn't re-analyze the ingredients — your note was saved with the previous nutrition info."
+                            )
+                          }
                           
                           setTimeout(() => {
                             setSaveSuccess(false)
