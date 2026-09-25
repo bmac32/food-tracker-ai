@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabase"
 import { getSmartFoodImages } from "@/lib/getSmartFoodImage"
 
-import { Sparkles, Dumbbell } from "lucide-react"
+import { Sparkles, Dumbbell, Refrigerator } from "lucide-react"
 
 import Upload from "@/components/Upload"
 import DailySummary from "@/components/DailySummary"
 import MealFeed from "@/components/MealFeed"
 import MealReviewCard from "@/components/MealReviewCard"
+import FridgeSuggest, { FridgeSuggestion } from "@/components/FridgeSuggest"
 import UserInfo from "@/components/UserInfo"
 import WorkoutLogger from "@/components/WorkoutLogger"
 
@@ -54,6 +55,7 @@ export default function Home() {
   const [scrollProgress, setScrollProgress] = useState(0)
   const [workoutLoggerOpen, setWorkoutLoggerOpen] = useState(false)
   const [mealChooserOpen, setMealChooserOpen] = useState(false)
+  const [fridgeOpen, setFridgeOpen] = useState(false)
 
   // Continuous 0→1 scroll progress (not a hard threshold) so the header
   // collapses in lockstep with the scroll, like iOS's large-title behavior,
@@ -238,6 +240,37 @@ export default function Home() {
   }
 
   // -------------------------
+  // 🧊 FRIDGE SUGGESTION → REVIEW FLOW
+  // A chosen fridge suggestion becomes a pending meal: it goes through
+  // the same review card (photo picker, editable ingredients) and the
+  // same save path as a text-logged meal.
+  // -------------------------
+  const logFridgeSuggestion = async (s: FridgeSuggestion) => {
+    setFridgeOpen(false)
+    setAnalyzing(true)
+    setAnalysisError(null)
+
+    try {
+      const urls = await getSmartFoodImages(s.name, s.uses)
+      setPhotoUrls(urls)
+      setPhotoIndex(0)
+      setAnalysis({
+        meal_name: s.name,
+        foods: s.uses.length > 0 ? s.uses : [s.name],
+        calories: s.calories,
+        protein: s.protein,
+        carbs: s.carbs,
+        fat: s.fat,
+      })
+    } catch (err) {
+      console.error("FRIDGE LOG FAILED:", err)
+      setAnalysisError("Couldn't prepare that suggestion — please try again.")
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  // -------------------------
   // 💾 SAVE (UNCHANGED)
   // -------------------------
   const saveMeal = async () => {
@@ -386,6 +419,24 @@ export default function Home() {
                 uploadAndAnalyze(file)
               }}
             />
+
+            <button
+              onClick={() => {
+                setMealChooserOpen(false)
+                setFridgeOpen(true)
+              }}
+              className="group w-full flex items-center gap-3 bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-carb/40 active:scale-[0.98]"
+            >
+              <span className="w-8 h-8 rounded-full bg-gradient-to-br from-carb to-protein flex items-center justify-center shrink-0 transition-transform duration-300 ease-spring group-active:rotate-12">
+                <Refrigerator size={15} className="text-ground" />
+              </span>
+              <span className="text-left">
+                <span className="block">Snap your fridge</span>
+                <span className="block text-xs font-normal text-ink-faint mt-0.5">
+                  Get meal ideas that close today's gaps
+                </span>
+              </span>
+            </button>
 
             <button
               onClick={() => {
@@ -542,6 +593,12 @@ export default function Home() {
         open={workoutLoggerOpen}
         onClose={() => setWorkoutLoggerOpen(false)}
         onSaved={() => setRefreshFeed((prev) => prev + 1)}
+      />
+
+      <FridgeSuggest
+        open={fridgeOpen}
+        onClose={() => setFridgeOpen(false)}
+        onLog={logFridgeSuggestion}
       />
     </main>
   </div>
