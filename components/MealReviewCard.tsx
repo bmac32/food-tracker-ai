@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { ThumbsDown } from "lucide-react"
-import PortionBalance from "./PortionBalance"
+import PortionBalance, { type TeachMacros } from "./PortionBalance"
 import MealImageCarousel from "./MealImageCarousel"
 import { fallbackSet } from "@/lib/getSmartFoodImage"
 
@@ -15,6 +15,7 @@ type FoodItem = {
   carbs: number
   fat: number
   per100: { protein: number; carbs: number; fat: number } | null
+  source?: string
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10
@@ -34,6 +35,7 @@ function toFoodItems(analysis: any): FoodItem[] {
             fat: Number(f.per100.fat) || 0,
           }
         : null,
+      source: typeof f.source === "string" ? f.source : undefined,
     }))
   }
   // Legacy analyses: names only, no portion data.
@@ -132,6 +134,45 @@ export default function MealReviewCard({
     setNewFood("")
   }
 
+  // Teach-the-app: save the correction as this food's truth (remembered
+  // for all future meals) and apply it to this meal's numbers right away.
+  const handleTeach = async (
+    item: string,
+    grams: number,
+    macros: TeachMacros
+  ) => {
+    const res = await fetch("/api/food-corrections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        food: item,
+        grams,
+        protein: macros.protein,
+        carbs: macros.carbs,
+        fat: macros.fat,
+      }),
+    })
+    if (!res.ok) throw new Error("Couldn't save the correction.")
+    setItems((prev) =>
+      prev.map((it) =>
+        it.item === item
+          ? {
+              ...it,
+              protein: macros.protein,
+              carbs: macros.carbs,
+              fat: macros.fat,
+              source: "yours",
+            }
+          : it
+      )
+    )
+  }
+
+  // Honest "~": any item that is still an AI guess makes the totals estimates.
+  const estimated = items.some(
+    (i) => i.source !== "yours" && i.source !== "usda"
+  )
+
   const handleSave = async () => {
     if (isSaving) return
     analysis.foods = items.map((i) => i.item)
@@ -141,6 +182,7 @@ export default function MealReviewCard({
       analysis.carbs = shown.carbs
       analysis.fat = shown.fat
       analysis.calories = shown.calories
+      analysis.estimated = estimated
     }
     await onSave()
   }
@@ -257,16 +299,20 @@ export default function MealReviewCard({
           </div>
         </div>
 
-        {/* MACROS */}
+        {/* MACROS — "~" when any item is still an AI estimate */}
         <div className="flex justify-between text-xs font-semibold tabular-nums pt-2 border-t border-hair">
-          <span className="text-cal">{shown.calories} calories</span>
-          <span className="text-protein">{shown.protein} protein</span>
-          <span className="text-carb">{shown.carbs} carbs</span>
-          <span className="text-fat">{shown.fat} fat</span>
+          <span className="text-cal">{estimated ? "~" : ""}{shown.calories} calories</span>
+          <span className="text-protein">{estimated ? "~" : ""}{shown.protein} protein</span>
+          <span className="text-carb">{estimated ? "~" : ""}{shown.carbs} carbs</span>
+          <span className="text-fat">{estimated ? "~" : ""}{shown.fat} fat</span>
         </div>
 
         {/* PORTION BALANCE — breakdown of the totals above */}
-        <PortionBalance items={hasPortions ? items : []} />
+        <PortionBalance
+          items={hasPortions ? items : []}
+          teachable
+          onTeach={handleTeach}
+        />
 
         {/* NOTE */}
         <textarea

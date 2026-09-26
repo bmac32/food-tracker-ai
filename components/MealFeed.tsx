@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../lib/supabase"
 import { Send, SlidersHorizontal, UtensilsCrossed } from "lucide-react"
-import PortionBalance from "./PortionBalance"
+import PortionBalance, { type TeachMacros } from "./PortionBalance"
 import { getSmartFoodImages, fallbackImage } from "@/lib/getSmartFoodImage"
 import MealImageCarousel from "./MealImageCarousel"
 import WorkoutCard from "./WorkoutCard"
@@ -246,6 +246,91 @@ export default function MealFeed({
     const i = c.indexOf(meal.photo_url)
     return i >= 0 ? i : 0
   }
+
+  // Teach-the-app from a saved meal: remember the correction for all
+  // future meals, and fix this meal's numbers too (via PATCH for real
+  // rows, optimistic local update for unsaved ones).
+  const handleTeach =
+    (meal: any) =>
+    async (item: string, grams: number, macros: TeachMacros) => {
+      const corrRes = await fetch("/api/food-corrections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          food: item,
+          grams,
+          protein: macros.protein,
+          carbs: macros.carbs,
+          fat: macros.fat,
+        }),
+      })
+      if (!corrRes.ok) throw new Error("Couldn't save the correction.")
+
+      const r1 = (n: number) => Math.round(n * 10) / 10
+      const applyLocal = (m: any) => {
+        let ai: any = null
+        try {
+          ai =
+            typeof m.ai_analysis === "string"
+              ? JSON.parse(m.ai_analysis)
+              : { ...(m.ai_analysis || {}) }
+        } catch {
+          return m
+        }
+        const items = Array.isArray(ai.food_items) ? ai.food_items : []
+        let protein = 0
+        let carbs = 0
+        let fat = 0
+        for (const it of items) {
+          if (String(it.item || "") === item) {
+            it.protein = r1(macros.protein)
+            it.carbs = r1(macros.carbs)
+            it.fat = r1(macros.fat)
+            it.source = "yours"
+          }
+          protein += Number(it.protein) || 0
+          carbs += Number(it.carbs) || 0
+          fat += Number(it.fat) || 0
+        }
+        protein = r1(protein)
+        carbs = r1(carbs)
+        fat = r1(fat)
+        ai.food_items = items
+        ai.protein = protein
+        ai.carbs = carbs
+        ai.fat = fat
+        ai.calories = Math.round(protein * 4 + carbs * 4 + fat * 9)
+        ai.estimated = items.some(
+          (it: any) => it.source !== "yours" && it.source !== "usda"
+        )
+        return { ...m, ai_analysis: ai }
+      }
+
+      if (typeof meal.id === "string") {
+        const res = await fetch(`/api/meals/${meal.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            item,
+            protein: macros.protein,
+            carbs: macros.carbs,
+            fat: macros.fat,
+          }),
+        })
+        const data = await res.json().catch(() => null)
+        if (res.ok && data?.ai_analysis) {
+          setMeals((prev) =>
+            prev.map((m) =>
+              m.id === meal.id ? { ...m, ai_analysis: data.ai_analysis } : m
+            )
+          )
+          return
+        }
+      }
+      setMeals((prev) =>
+        prev.map((m) => (m.id === meal.id ? applyLocal(m) : m))
+      )
+    }
 
   const handlePhotoChange = async (meal: any, i: number) => {
     const candidates = getCandidates(meal)
@@ -620,15 +705,20 @@ export default function MealFeed({
                     )}
 
                     <div className="flex justify-between text-[11px] font-semibold tabular-nums pt-1.5">
-                      <span className="text-cal">{ai?.calories || 0} cal</span>
-                      <span className="text-protein">{ai?.protein || 0} p</span>
-                      <span className="text-carb">{ai?.carbs || 0} c</span>
-                      <span className="text-fat">{ai?.fat || 0} f</span>
+                      <span className="text-cal">{ai?.estimated !== false ? "~" : ""}{ai?.calories || 0} cal</span>
+                      <span className="text-protein">{ai?.estimated !== false ? "~" : ""}{ai?.protein || 0} p</span>
+                      <span className="text-carb">{ai?.estimated !== false ? "~" : ""}{ai?.carbs || 0} c</span>
+                      <span className="text-fat">{ai?.estimated !== false ? "~" : ""}{ai?.fat || 0} f</span>
                     </div>
 
                     {/* Portion balance — breakdown of the totals above */}
                     {Array.isArray(ai?.food_items) && ai.food_items.length > 0 && (
-                      <PortionBalance items={ai.food_items} className="pt-2" />
+                      <PortionBalance
+                        items={ai.food_items}
+                        className="pt-2"
+                        teachable
+                        onTeach={handleTeach(meal)}
+                      />
                     )}
 
                     {hasInsight && (
