@@ -1,16 +1,41 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, ChartPie } from "lucide-react"
+import { ChevronDown, ChartPie, Pencil, Check } from "lucide-react"
 
 // Collapsible "where your macros come from" breakdown. Read-only and
 // shame-free: it informs the portion balance, never instructs.
 // Used on the review card and on saved meals in the feed.
+//
+// Teach-the-app: when `teachable`, tapping a food opens a small editor to
+// correct its macros ("pickles = 0 fat"). The correction is saved as the
+// food's truth and wins over USDA/AI in all future analyses — correct once,
+// remembered forever. Framed as teaching the app about the FOOD, never as
+// fixing the meal or the person.
 export type PortionShareItem = {
   item: string
   protein: number
   carbs: number
   fat: number
+  /** Serving grams the macros above describe (needed to store per-100g). */
+  grams?: number
+  /** "yours" | "usda" | "ai" — drives the honest "~" on estimates. */
+  source?: string
+}
+
+export type TeachMacros = { protein: number; carbs: number; fat: number }
+
+type Props = {
+  items: PortionShareItem[]
+  className?: string
+  /** Show the teach affordance on rows that have a known serving size. */
+  teachable?: boolean
+  /** Called after the correction is saved; caller updates its own state. */
+  onTeach?: (
+    item: string,
+    grams: number,
+    macros: TeachMacros
+  ) => Promise<void>
 }
 
 type ShareMode = "calories" | "protein" | "carbs" | "fat"
@@ -33,14 +58,54 @@ const calsOf = (p: number, c: number, f: number) => p * 4 + c * 4 + f * 9
 export default function PortionBalance({
   items,
   className = "",
-}: {
-  items: PortionShareItem[]
-  className?: string
-}) {
+  teachable = false,
+  onTeach,
+}: Props) {
   const [open, setOpen] = useState(false)
   const [shareMode, setShareMode] = useState<ShareMode>("calories")
+  // Teach-the-app editor state.
+  const [teaching, setTeaching] = useState<number | null>(null)
+  const [draft, setDraft] = useState<TeachMacros>({ protein: 0, carbs: 0, fat: 0 })
+  const [savingTeach, setSavingTeach] = useState(false)
+  const [taught, setTaught] = useState<string | null>(null)
 
   if (!items || items.length === 0) return null
+
+  const isEstimated = (source?: string) =>
+    source !== "yours" && source !== "usda"
+  const anyEstimated = items.some((it) => isEstimated(it.source))
+  const canTeach = (it: PortionShareItem) =>
+    teachable && !!onTeach && (it.grams ?? 0) > 0
+
+  const startTeaching = (index: number) => {
+    const it = items[index]
+    setDraft({
+      protein: Math.round(it.protein * 10) / 10,
+      carbs: Math.round(it.carbs * 10) / 10,
+      fat: Math.round(it.fat * 10) / 10,
+    })
+    setTeaching(index)
+    setTaught(null)
+  }
+
+  const saveTeaching = async () => {
+    if (teaching === null || !onTeach) return
+    const it = items[teaching]
+    const grams = it.grams ?? 0
+    if (grams <= 0) return
+    setSavingTeach(true)
+    try {
+      await onTeach(it.item, grams, {
+        protein: Math.max(0, draft.protein || 0),
+        carbs: Math.max(0, draft.carbs || 0),
+        fat: Math.max(0, draft.fat || 0),
+      })
+      setTaught(it.item)
+    } finally {
+      setSavingTeach(false)
+      setTeaching(null)
+    }
+  }
 
   const shareValues = items.map((it) =>
     shareMode === "calories"
@@ -107,23 +172,124 @@ export default function PortionBalance({
 
           {/* per-ingredient shares */}
           <div className="divide-y divide-hair/50">
-            {items.map((it, i) => (
-              <div key={i} className="flex items-center gap-2 py-1.5">
-                <span
-                  className="w-2 h-2 rounded-full shrink-0"
-                  style={{
-                    backgroundColor: SEGMENT_COLORS[i % SEGMENT_COLORS.length],
-                  }}
-                />
-                <span className="flex-1 truncate text-xs text-ink">
-                  {it.item}
-                </span>
-                <span className="text-[11px] text-ink-faint tabular-nums shrink-0">
-                  {shares[i]}%
-                </span>
-              </div>
-            ))}
+            {items.map((it, i) => {
+              const teachableRow = canTeach(it)
+              const row = (
+                <>
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{
+                      backgroundColor: SEGMENT_COLORS[i % SEGMENT_COLORS.length],
+                    }}
+                  />
+                  <span className="flex-1 truncate text-xs text-ink">
+                    {it.item}
+                  </span>
+                  {taught === it.item ? (
+                    <span className="flex items-center gap-1 text-[11px] text-protein shrink-0">
+                      <Check size={12} /> Remembered
+                    </span>
+                  ) : (
+                    <>
+                      {teachableRow && (
+                        <Pencil
+                          size={11}
+                          className="text-ink-faint/60 shrink-0"
+                        />
+                      )}
+                      <span className="text-[11px] text-ink-faint tabular-nums shrink-0">
+                        {shares[i]}%
+                      </span>
+                    </>
+                  )}
+                </>
+              )
+              return (
+                <div key={i}>
+                  {teachableRow ? (
+                    <button
+                      onClick={() => {
+                        if (teaching === i) setTeaching(null)
+                        else startTeaching(i)
+                      }}
+                      className="w-full flex items-center gap-2 py-1.5 text-left active:opacity-70"
+                      title={`Teach the app about ${it.item}`}
+                    >
+                      {row}
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 py-1.5">{row}</div>
+                  )}
+
+                  {/* teach-the-app editor */}
+                  {teaching === i && (
+                    <div className="pb-3 pt-1 px-1 animate-fade-in">
+                      <p className="text-xs font-medium text-ink">
+                        Teach the app about {it.item}
+                      </p>
+                      <p className="text-[11px] text-ink-faint mt-0.5 mb-2">
+                        {isEstimated(it.source) ? "This was an estimate (~). " : ""}
+                        What should I remember for next time?
+                      </p>
+                      <div className="flex gap-2">
+                        {(
+                          [
+                            ["protein", "Protein"],
+                            ["carbs", "Carbs"],
+                            ["fat", "Fat"],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <label key={key} className="flex-1">
+                            <span className="block text-[10px] text-ink-faint mb-1">
+                              {isEstimated(it.source) ? "~" : ""}
+                              {label} (g)
+                            </span>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              step="any"
+                              value={draft[key]}
+                              onChange={(e) =>
+                                setDraft((d) => ({
+                                  ...d,
+                                  [key]: Number(e.target.value),
+                                }))
+                              }
+                              className="w-full bg-ground border border-hair rounded-lg px-2 py-1.5 text-xs text-ink tabular-nums outline-none transition focus:border-ink/40"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={() => setTeaching(null)}
+                          className="flex-1 py-2 rounded-lg text-xs text-ink-faint active:scale-[0.98]"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={saveTeaching}
+                          disabled={savingTeach}
+                          className="flex-1 py-2 rounded-lg text-xs font-semibold bg-ink text-ground active:scale-[0.98] disabled:opacity-50"
+                        >
+                          {savingTeach ? "Remembering…" : "Remember"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
+
+          {/* honesty footnote — explains the "~" and teaches the gesture */}
+          {teachable && anyEstimated && (
+            <p className="text-[10px] text-ink-faint pt-2 leading-relaxed">
+              Numbers marked ~ are estimates. Tap any food to teach the app,
+              and it will remember.
+            </p>
+          )}
         </div>
       )}
     </div>

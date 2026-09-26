@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
-import { getRouteUser } from "@/lib/supabaseServer"
-import { usdaMacrosFor } from "@/lib/usda"
+import { getRouteUser, createServerSupabase } from "@/lib/supabaseServer"
+import { resolveFoodMacros } from "@/lib/foodTruth"
 
 /**
  * POST /api/meals/analyze
@@ -138,7 +138,7 @@ List EVERY distinct food you can identify as its own item — a meal with steak 
  * whenever they exist — the AI only does portion math, never macro invention.
  * Calories are DERIVED via Atwater 4/4/9 so nothing can contradict itself.
  */
-const ESTIMATION_RULES = `For each food: give a plain item name (no quantities in the name), your best estimate of grams for a standard home-cooked portion (not restaurant-sized unless the user says so), and your best macro guess per that portion. Only count oils, butter, dressings, or sauces if the user mentions them or they are clearly visible in the photo; never assume hidden fats. The server verifies every item against the USDA database and uses lab-measured values when found — your grams do the portion math, your macros are only the fallback.`
+const ESTIMATION_RULES = `For each food: give a plain item name (no quantities in the name), your best estimate of grams for a standard home-cooked portion (not restaurant-sized unless the user says so), and your best macro guess per that portion. Only count oils, butter, dressings, or sauces if the user mentions them or they are clearly visible in the photo; never assume hidden fats. The server checks her saved food corrections first, then verifies every item against the USDA database and uses lab-measured values when found — your grams do the portion math, your macros are only the fallback.`
 
 type FoodItem = {
   item: string
@@ -186,10 +186,12 @@ async function finalize(raw: any, fallbackFoods: string[] = []) {
   // Hybrid: USDA lab values per item when found, AI guess otherwise.
   // Per-item results are kept so the client can offer portion refinement
   // (grams editing) and recompute macros without another round trip.
+  // NOTE: this pass keeps the AI's own estimates only (source "ai").
+  // applyFoodTruth() runs after and upgrades each item through the truth
+  // loop: her correction -> USDA lab data -> AI estimate.
   let protein = 0
   let carbs = 0
   let fat = 0
-  let usdaVerified = 0
   const foodItems: {
     item: string
     grams: number
@@ -197,44 +199,26 @@ async function finalize(raw: any, fallbackFoods: string[] = []) {
     carbs: number
     fat: number
     per100: { protein: number; carbs: number; fat: number } | null
+    source: "ai"
   }[] = []
   const r1 = (n: number) => Math.round(n * 10) / 10
-  await Promise.all(
-    items.map(async (it) => {
-      const per100 = await usdaMacrosFor(it.item)
-      let p: number
-      let c: number
-      let f: number
-      if (per100 && it.grams > 0) {
-        const k = it.grams / 100
-        p = per100.protein * k
-        c = per100.carbs * k
-        f = per100.fat * k
-        usdaVerified += 1
-      } else {
-        p = it.protein
-        c = it.carbs
-        f = it.fat
-      }
-      protein += p
-      carbs += c
-      fat += f
-      foodItems.push({
-        item: it.item,
-        grams: it.grams,
-        protein: r1(p),
-        carbs: r1(c),
-        fat: r1(f),
-        per100: per100
-          ? {
-              protein: r1(per100.protein),
-              carbs: r1(per100.carbs),
-              fat: r1(per100.fat),
-            }
-          : null,
-      })
+  for (const it of items) {
+    const p = r1(it.protein)
+    const c = r1(it.carbs)
+    const f = r1(it.fat)
+    protein += p
+    carbs += c
+    fat += f
+    foodItems.push({
+      item: it.item,
+      grams: it.grams,
+      protein: p,
+      carbs: c,
+      fat: f,
+      per100: null,
+      source: "ai",
     })
-  )
+  }
   protein = Math.round(protein * 10) / 10
   carbs = Math.round(carbs * 10) / 10
   fat = Math.round(fat * 10) / 10
@@ -252,8 +236,62 @@ async function finalize(raw: any, fallbackFoods: string[] = []) {
     carbs,
     fat,
     calories,
-    usda_verified: usdaVerified,
-    usda_items: items.length,
+    // Recomputed by applyFoodTruth(); true until then.
+    estimated: true,
+  }
+}
+
+/**
+ * Second pass: run every food item through the truth loop
+ * (her correction -> USDA lab data -> AI estimate) and rebuild the
+ * meal totals from the resolved values. Sets `estimated` true when any
+ * item is still an AI guess, so the UI can show an honest "~".
+ */
+async function applyFoodTruth(result: any, supabase: any, userId: string) {
+  const items = Array.isArray(result?.food_items) ? result.food_items : []
+  if (items.length === 0) return { ...result, estimated: true }
+  const cache = new Map<string, any>()
+  const r1 = (n: number) => Math.round(n * 10) / 10
+  let protein = 0
+  let carbs = 0
+  let fat = 0
+  let estimated = false
+  await Promise.all(
+    items.map(async (it: any) => {
+      const resolved = await resolveFoodMacros({
+        supabase,
+        userId,
+        item: String(it.item || ""),
+        grams: Number(it.grams) || 0,
+        fallback: {
+          protein: Number(it.protein) || 0,
+          carbs: Number(it.carbs) || 0,
+          fat: Number(it.fat) || 0,
+        },
+        cache,
+      })
+      it.protein = resolved.protein
+      it.carbs = resolved.carbs
+      it.fat = resolved.fat
+      it.per100 = resolved.per100
+      it.source = resolved.source
+      if (resolved.source === "ai") estimated = true
+      protein += resolved.protein
+      carbs += resolved.carbs
+      fat += resolved.fat
+    })
+  )
+  protein = r1(protein)
+  carbs = r1(carbs)
+  fat = r1(fat)
+  return {
+    ...result,
+    food_items: items,
+    protein,
+    carbs,
+    fat,
+    calories: Math.round(protein * 4 + carbs * 4 + fat * 9),
+    estimated,
   }
 }
 
@@ -397,7 +435,11 @@ export async function POST(req: Request) {
     // ---------------- TEXT MODE ----------------
     if (text) {
       try {
-        return NextResponse.json(await analyzeText(String(text)))
+        const supabase = await createServerSupabase()
+        const result = await analyzeText(String(text))
+        return NextResponse.json(
+          await applyFoodTruth(result, supabase, user.id)
+        )
       } catch (err) {
         console.error("TEXT MODE FAILED:", err)
         return NextResponse.json(
@@ -440,16 +482,20 @@ export async function POST(req: Request) {
 
     // Pass 1: cheap Gemini structured pass
     try {
+      const supabase = await createServerSupabase()
       const result = await analyzePhotoWithGemini(base64Images)
-      return NextResponse.json({ ...result, photos_analyzed: urls.length })
+      const withTruth = await applyFoodTruth(result, supabase, user.id)
+      return NextResponse.json({ ...withTruth, photos_analyzed: urls.length })
     } catch (err) {
       console.error("GEMINI PHOTO FAILED:", err)
     }
 
     // Pass 2: cheap Claude vision fallback
     try {
+      const supabase = await createServerSupabase()
       const result = await analyzePhotoWithClaude(base64Images)
-      return NextResponse.json({ ...result, photos_analyzed: urls.length })
+      const withTruth = await applyFoodTruth(result, supabase, user.id)
+      return NextResponse.json({ ...withTruth, photos_analyzed: urls.length })
     } catch (err) {
       console.error("CLAUDE VISION FAILED:", err)
     }

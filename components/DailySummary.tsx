@@ -30,16 +30,17 @@ const RING_COLOR: Record<string, string> = {
   fat: "var(--color-fat)",
 }
 
-function getMessage(type: string, total: number, goal: number) {
+function getMessage(type: string, total: number, goal: number, estimated: boolean) {
   const diff = goal - total
+  const tilde = estimated ? "~" : ""
 
   if (diff > 0) {
-    if (type === "calories") return `${diff} cal left`
-    return `${diff}g left`
+    if (type === "calories") return `${tilde}${diff} cal left`
+    return `${tilde}${diff}g left`
   }
 
   if (type === "protein") return "On track"
-  if (type === "calories") return `+${Math.abs(diff)} over`
+  if (type === "calories") return `+${tilde}${Math.abs(diff)} over`
   return "Slightly high"
 }
 
@@ -79,6 +80,7 @@ function Ring({
   progress,
   type,
   detailOpacity = 1,
+  estimated = false,
 }: {
   label: string
   value: number
@@ -86,6 +88,7 @@ function Ring({
   progress: number
   type: string
   detailOpacity?: number
+  estimated?: boolean
 }) {
   const capped = Math.min(progress, 1)
   const color = RING_COLOR[type] || "var(--color-ink)"
@@ -132,7 +135,7 @@ function Ring({
           maxHeight: detailOpacity > 0 ? "1.2em" : "0",
         }}
       >
-        {getMessage(type, value, goal)}
+        {getMessage(type, value, goal, estimated)}
       </p>
     </div>
   )
@@ -289,6 +292,21 @@ const totals = {
   carbs: r1(rawTotals.carbs),
   fat: r1(rawTotals.fat),
 }
+
+// Honest "~": the day's numbers are estimates when any meal still has
+// AI-guessed items (no correction, no USDA lab data). Meals saved before
+// this flag existed count as estimated — they were all AI guesses.
+const anyEstimated = meals.some((meal) => {
+  try {
+    const ai =
+      typeof meal.ai_analysis === "string"
+        ? JSON.parse(meal.ai_analysis)
+        : meal.ai_analysis
+    return ai?.estimated !== false
+  } catch {
+    return true
+  }
+})
 
   const caloriesBurned = workouts.reduce(
     (sum, w) => sum + (Number(w.calories_burned) || 0),
@@ -496,6 +514,7 @@ const totals = {
             progress={animatedProgress.calories}
             type="calories"
             detailOpacity={detailOpacity}
+            estimated={anyEstimated}
           />
           <Ring
             label="Protein"
@@ -504,6 +523,7 @@ const totals = {
             progress={animatedProgress.protein}
             type="protein"
             detailOpacity={detailOpacity}
+            estimated={anyEstimated}
           />
           <Ring
             label="Carbs"
@@ -512,6 +532,7 @@ const totals = {
             progress={animatedProgress.carbs}
             type="carbs"
             detailOpacity={detailOpacity}
+            estimated={anyEstimated}
           />
           <Ring
             label="Fat"
@@ -520,6 +541,7 @@ const totals = {
             progress={animatedProgress.fat}
             type="fat"
             detailOpacity={detailOpacity}
+            estimated={anyEstimated}
           />
         </div>
       </div>
