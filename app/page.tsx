@@ -45,6 +45,7 @@ export default function Home() {
   // index is what gets saved as photo_url; the full pool is saved as
   // photo_candidates so the feed can offer the same picker later.
   const [photoUrls, setPhotoUrls] = useState<string[]>([])
+  const [isUserPhoto, setIsUserPhoto] = useState(false)
   const [photoIndex, setPhotoIndex] = useState(0)
   const photoUrl = photoUrls[photoIndex] ?? null
   const [analyzing, setAnalyzing] = useState(false)
@@ -141,6 +142,7 @@ export default function Home() {
       // User-uploaded photo: single candidate, no picker needed.
       setPhotoUrls(url ? [url] : [])
       setPhotoIndex(0)
+      setIsUserPhoto(true)
 
       const res = await fetch("/api/meals/analyze", {
         method: "POST",
@@ -234,6 +236,7 @@ export default function Home() {
       // ✅ THEN: set both together
       setPhotoUrls(imageUrls)
       setPhotoIndex(0)
+      setIsUserPhoto(false)
       setAnalysis(parsedAnalysis)
     } catch (err) {
       console.error(err)
@@ -260,6 +263,7 @@ export default function Home() {
       })
       setPhotoUrls(urls)
       setPhotoIndex(0)
+      setIsUserPhoto(false)
       setAnalysis({
         meal_name: s.name,
         foods: s.uses.length > 0 ? s.uses : [s.name],
@@ -679,9 +683,11 @@ export default function Home() {
           saveSuccess={saveSuccess}
           onDislikePhoto={handleDislikePhoto}
           onNoneOfThesePhotos={handleNoneOfThesePhotos}
+          isUserPhoto={isUserPhoto}
           onCancel={() => {
             setPhotoUrls([])
             setPhotoIndex(0)
+            setIsUserPhoto(false)
             setAnalysis(null)
             setAnalysisError(null)
           } } 
