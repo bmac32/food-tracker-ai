@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabase"
 import { getSmartFoodImages } from "@/lib/getSmartFoodImage"
 
-import { Sparkles, Dumbbell, Refrigerator, Trophy } from "lucide-react"
+import { Sparkles, Dumbbell, Refrigerator, Apple } from "lucide-react"
 
 import Upload from "@/components/Upload"
 import DailySummary from "@/components/DailySummary"
@@ -23,6 +23,7 @@ type Analysis = {
   protein: number | string
   carbs: number | string
   fat: number | string
+  image_query?: string
 }
 
 export default function Home() {
@@ -200,6 +201,7 @@ export default function Home() {
                 typeof f === "string" ? f : f?.item || "food"
               )
             : [mealText],
+        image_query: data?.image_query || "",
         calories: data?.calories ?? 200,
         protein: data?.protein ?? 5,
         carbs: data?.carbs ?? 30,
@@ -209,7 +211,8 @@ export default function Home() {
       // ✅ FIRST: get image candidates (swipeable picker)
       const imageUrls = await getSmartFoodImages(
         parsedAnalysis.meal_name,
-        parsedAnalysis.foods
+        parsedAnalysis.foods,
+        { imageQuery: parsedAnalysis.image_query }
       )
 
       // ✅ THEN: set both together
@@ -231,7 +234,11 @@ export default function Home() {
     if (!analysis || refreshingPhotos) return
     setRefreshingPhotos(true)
     try {
-      const urls = await getSmartFoodImages(analysis.meal_name, analysis.foods)
+      const urls = await getSmartFoodImages(
+        analysis.meal_name,
+        analysis.foods,
+        { imageQuery: analysis.image_query || "" }
+      )
       setPhotoUrls(urls)
       setPhotoIndex(0)
     } catch (err) {
@@ -407,9 +414,9 @@ export default function Home() {
           className="group w-full flex items-center justify-center gap-2 bg-surface border border-hair rounded-2xl py-3 text-sm font-bold text-ink-dim transition-all duration-200 ease-spring hover:border-burn/40 hover:text-ink hover:bg-surface-2 active:scale-[0.98]"
         >
           <span className="w-5 h-5 rounded-full bg-gradient-to-br from-burn to-burn-2 flex items-center justify-center transition-transform duration-300 ease-spring group-active:scale-[1.15]">
-            <Trophy size={11} className="text-ground" />
+            <Apple size={11} className="text-ground" />
           </span>
-          Coach review — what am I missing?
+          Review my day
         </button>
         </div>
       )}
