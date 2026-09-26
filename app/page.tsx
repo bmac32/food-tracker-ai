@@ -6,14 +6,14 @@ import { supabase } from "../lib/supabase"
 import { getSmartFoodImages, fallbackSet } from "@/lib/getSmartFoodImage"
 import { dishKey } from "@/lib/photoLearning"
 
-import { Sparkles, Dumbbell, Refrigerator, Apple } from "lucide-react"
+import { Sparkles, Dumbbell, Refrigerator } from "lucide-react"
 
 import Upload from "@/components/Upload"
 import DailySummary from "@/components/DailySummary"
 import MealFeed from "@/components/MealFeed"
 import MealReviewCard from "@/components/MealReviewCard"
+import CoachNext, { CoachTip } from "@/components/CoachNext"
 import FridgeSuggest, { FridgeSuggestion } from "@/components/FridgeSuggest"
-import CoachReview from "@/components/CoachReview"
 import UserInfo from "@/components/UserInfo"
 import WorkoutLogger from "@/components/WorkoutLogger"
 
@@ -58,7 +58,10 @@ export default function Home() {
   const [workoutLoggerOpen, setWorkoutLoggerOpen] = useState(false)
   const [mealChooserOpen, setMealChooserOpen] = useState(false)
   const [fridgeOpen, setFridgeOpen] = useState(false)
-  const [coachOpen, setCoachOpen] = useState(false)
+  const [coachTip, setCoachTip] = useState<{
+    tip: CoachTip
+    nextMeal: string
+  } | null>(null)
 
   // Continuous 0→1 scroll progress (not a hard threshold) so the header
   // collapses in lockstep with the scroll, like iOS's large-title behavior,
@@ -346,6 +349,9 @@ export default function Home() {
         }),
       }).catch(() => {})
 
+      // Live coach: guidance for the next meal, based on today so far.
+      fetchCoachTip()
+
       setRefreshFeed((prev) => prev + 1)
 
       setSaveSuccess(true)
@@ -364,6 +370,39 @@ export default function Home() {
     } catch (err) {
       console.error(err)
       setIsSaving(false)
+    }
+  }
+
+  // -------------------------
+  // 🎯 LIVE COACH — guidance for the NEXT meal, right after saving
+  // -------------------------
+  const fetchCoachTip = async () => {
+    // Only for today — backfilling a past day doesn't need "next meal" advice.
+    const today = new Date()
+    const viewing = new Date(currentDate)
+    const isToday =
+      today.getFullYear() === viewing.getFullYear() &&
+      today.getMonth() === viewing.getMonth() &&
+      today.getDate() === viewing.getDate()
+    if (!isToday) return
+
+    const start = new Date(viewing)
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(viewing)
+    end.setHours(23, 59, 59, 999)
+    try {
+      const params = new URLSearchParams({
+        start: start.toISOString(),
+        end: end.toISOString(),
+        hour: String(new Date().getHours()),
+      })
+      const res = await fetch(`/api/coach/next?${params.toString()}`)
+      const json = await res.json()
+      if (json?.tip) {
+        setCoachTip({ tip: json.tip, nextMeal: json.nextMeal || "your next meal" })
+      }
+    } catch {
+      // Silent — the card just doesn't appear.
     }
   }
 
@@ -410,8 +449,7 @@ export default function Home() {
     setPhotoIndex(0)
   }
 
-  /** "None of these look right": dislike the whole batch, fetch a fresh one. */
-  const handleNoneOfThesePhotos = async () => {
+  /** "None of these look right": dislike the whole batch, fetch a fresh one. */  const handleNoneOfThesePhotos = async () => {
     if (!analysis || photoUrls.length === 0) return
     const key = dishKey(analysis.meal_name, analysis.foods)
     const shown = [...photoUrls]
@@ -461,6 +499,14 @@ export default function Home() {
 
     <main className="relative z-10 max-w-xl mx-auto px-6 pt-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] space-y-6 min-h-screen">
 
+      {coachTip && !analysis && (
+        <CoachNext
+          tip={coachTip.tip}
+          nextMeal={coachTip.nextMeal}
+          onClose={() => setCoachTip(null)}
+        />
+      )}
+
       {!photoUrl && !analysis && (
         <div className="space-y-3">
         <div className="flex gap-3">
@@ -484,16 +530,6 @@ export default function Home() {
             Log workout
           </button>
         </div>
-
-        <button
-          onClick={() => setCoachOpen(true)}
-          className="group w-full flex items-center justify-center gap-2 bg-surface border border-hair rounded-2xl py-3 text-sm font-bold text-ink-dim transition-all duration-200 ease-spring hover:border-burn/40 hover:text-ink hover:bg-surface-2 active:scale-[0.98]"
-        >
-          <span className="w-5 h-5 rounded-full bg-gradient-to-br from-burn to-burn-2 flex items-center justify-center transition-transform duration-300 ease-spring group-active:scale-[1.15]">
-            <Apple size={11} className="text-ground" />
-          </span>
-          Review my day
-        </button>
         </div>
       )}
 
@@ -698,8 +734,6 @@ export default function Home() {
         onClose={() => setFridgeOpen(false)}
         onLog={logFridgeSuggestion}
       />
-
-      <CoachReview open={coachOpen} onClose={() => setCoachOpen(false)} />
     </main>
   </div>
  )
