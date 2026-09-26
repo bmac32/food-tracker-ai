@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { ThumbsDown } from "lucide-react"
 import MealImageCarousel from "./MealImageCarousel"
 import { fallbackSet } from "@/lib/getSmartFoodImage"
 
@@ -8,6 +9,8 @@ type Props = {
   images: string[]
   imageIndex: number
   onImageChange: (i: number) => void
+  onDislikePhoto: (i: number) => void
+  onNoneOfThesePhotos: () => void
   analysis: any
   note: string
   setNote: (v: string) => void
@@ -22,6 +25,8 @@ export default function MealReviewCard({
   images,
   imageIndex,
   onImageChange,
+  onDislikePhoto,
+  onNoneOfThesePhotos,
   analysis,
   note,
   setNote,
@@ -78,6 +83,15 @@ export default function MealReviewCard({
           ✕
         </button>
 
+        {/* THUMBS-DOWN — "this photo is wrong" teaches the picker */}
+        <button
+          onClick={() => onDislikePhoto(imageIndex)}
+          title="This photo isn't right"
+          className="absolute top-3 left-3 z-10 w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink/80 transition-all duration-150 ease-spring hover:bg-black/60 hover:text-ink hover:scale-110 active:scale-90"
+        >
+          <ThumbsDown size={14} />
+        </button>
+
         <MealImageCarousel
           images={
             images.length > 0
@@ -100,6 +114,14 @@ export default function MealReviewCard({
           </h2>
         </div>
       </div>
+
+      {/* NONE OF THESE — dislike the whole batch, fetch a fresh set */}
+      <button
+        onClick={onNoneOfThesePhotos}
+        className="w-full pt-2 pb-1 text-[11px] text-ink-faint hover:text-ink transition-colors"
+      >
+        None of these look right — try others
+      </button>
 
       {/* CONTENT */}
       <div className="p-4 space-y-4">

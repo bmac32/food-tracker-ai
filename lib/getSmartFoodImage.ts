@@ -147,6 +147,8 @@ export function fallbackSet(mealName?: string): string[] {
 export type ImageLookupOpts = {
   /** 3-6 word photo search from the AI analysis — best query source. */
   imageQuery?: string
+  /** Normalized dish key so the server can lead with her past picks. */
+  dishKey?: string
   /** URLs already used by other meals today — excluded so the day view
    *  doesn't repeat the same photo. */
   exclude?: string[]
@@ -180,6 +182,7 @@ export async function getSmartFoodImages(
       "meal"
 
     const params = new URLSearchParams({ q: query })
+    if (opts?.dishKey) params.set("dish", opts.dishKey)
     if (opts?.exclude?.length) {
       params.set("exclude", opts.exclude.join(","))
     }
