@@ -129,15 +129,19 @@ const JSON_INSTRUCTION = `Return ONLY valid JSON, no markdown fences:
  "protein": number,
  "carbs": number,
  "fat": number,
- "calories": number
+ "calories": number,
+ "image_query": "3-6 word stock-photo search describing this dish as plated, e.g. 'fluffy scrambled eggs on toast'"
 }`
 
 function finalize(raw: any, fallbackFoods: string[] = []) {
   const foods = cleanFoods(raw?.foods?.length ? raw.foods : fallbackFoods)
+  const imageQuery =
+    typeof raw?.image_query === "string" ? raw.image_query.slice(0, 60).trim() : ""
   return {
     meal_name: raw?.meal_name || "Meal",
     foods,
     primary_food: getPrimaryFood(foods),
+    image_query: imageQuery,
     protein: Number(raw?.protein) || 0,
     carbs: Number(raw?.carbs) || 0,
     fat: Number(raw?.fat) || 0,
@@ -151,7 +155,7 @@ function finalize(raw: any, fallbackFoods: string[] = []) {
 async function analyzeText(text: string) {
   const res = await getAnthropic().messages.create({
     model: TEXT_MODEL,
-    max_tokens: 300,
+    max_tokens: 400,
     messages: [
       {
         role: "user",

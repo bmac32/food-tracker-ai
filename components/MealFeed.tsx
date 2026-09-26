@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../lib/supabase"
 import { Send, SlidersHorizontal, UtensilsCrossed } from "lucide-react"
-import { getSmartFoodImages } from "@/lib/getSmartFoodImage"
+import { getSmartFoodImages, fallbackImage } from "@/lib/getSmartFoodImage"
 import MealImageCarousel from "./MealImageCarousel"
 import WorkoutCard from "./WorkoutCard"
 
@@ -227,15 +227,20 @@ export default function MealFeed({
   // New meals save a `photo_candidates` array; older meals fall back to
   // their single photo_url. The selected index is derived from where
   // photo_url sits inside the candidates, so no extra state is needed.
-  const MEAL_PHOTO_FALLBACK =
-    "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
-
   const getCandidates = (meal: any): string[] => {
     const c = meal.photo_candidates
     if (Array.isArray(c) && c.length > 0) {
       return c.filter((u: any) => typeof u === "string" && u.length > 0)
     }
-    return [meal.photo_url || MEAL_PHOTO_FALLBACK]
+    let mealName = ""
+    try {
+      const ai =
+        typeof meal.ai_analysis === "string"
+          ? JSON.parse(meal.ai_analysis)
+          : meal.ai_analysis
+      mealName = ai?.meal_name || ""
+    } catch {}
+    return [meal.photo_url || fallbackImage(mealName)]
   }
 
   const getPhotoIndex = (meal: any): number => {
@@ -279,7 +284,15 @@ export default function MealFeed({
 
     setRefreshingPhotoMealId(meal.id)
     try {
-      const urls = await getSmartFoodImages(ai?.meal_name || "meal", ai?.foods)
+      // Exclude photos already used by other meals today so the day view
+      // doesn't repeat the same image across meals.
+      const usedElsewhere = meals
+        .filter((m) => m.id !== meal.id)
+        .flatMap((m) => getCandidates(m))
+      const urls = await getSmartFoodImages(ai?.meal_name || "meal", ai?.foods, {
+        imageQuery: ai?.image_query || "",
+        exclude: usedElsewhere,
+      })
       if (!urls.length) return
       setMeals((prev) =>
         prev.map((m) =>
