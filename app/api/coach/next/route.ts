@@ -161,11 +161,15 @@ DATA:
 - Meals today: ${mealLines.join("; ")}
 - Foods she eats often: ${usual.join("; ") || "unknown"}
 
-TASK: pick the ONE macro most worth prioritizing at ${nextMeal} given the gaps (or "balanced" if she's on track across the board). Suggest 3 concrete, specific foods or small meals that fill that gap — prefer foods from her usual list when they fit. Keep the whole thing readable in 5 seconds. At most one number in the detail.
+TASK: Write like a friendly dietitian texting her — plain-spoken, warm, brief, zero judgment. Subtle, not coachy.
+- "headline": casual and short, like "grab some protein at lunch". No hype, no exclamation marks.
+- "detail": exactly one sentence, conversational. If relevant, tie it to how she'll feel (energy, hunger) rather than the numbers. Never say she's "behind", "low", or "lacking" — just note what she hasn't had much of yet. At most one number, ideally none.
+- "suggestions": 3 specific, simple foods or small meals that fill the gap — prefer her usual foods when they fit. Keep each under 5 words.
+- The whole thing must read in 3 seconds. If she's on track across the board, say so warmly in one line (e.g. "you're eating well today — keep doing what you're doing") with 3 easy, balanced suggestions.
 
 Return ONLY valid JSON, no markdown fences:
 {
-  "headline": "short warm headline, e.g. 'Protein is your play for lunch'",
+  "headline": "short, casual, like 'grab some protein at lunch'",
   "focus": "protein" | "carbs" | "fat" | "balanced",
   "detail": "1-2 sentences tying it to what she ate today; name the meal",
   "suggestions": ["specific food 1", "specific food 2", "specific food 3"]
