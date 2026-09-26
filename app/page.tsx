@@ -363,19 +363,23 @@ export default function Home() {
         return
       }
 
-      // Photo learning loop: remember which photo she picked for this dish,
+      // Photo learning loop: remember which STOCK photo she picked for this dish,
       // so the next similar meal opens with a winner. Fire-and-forget.
-      fetch("/api/food-image/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          dish_key: dishKey(analysis.meal_name, analysis.foods),
-          meal_name: analysis.meal_name,
-          foods: analysis.foods,
-          photo_url: safePhoto,
-          verdict: "chosen",
-        }),
-      }).catch(() => {})
+      // User-uploaded photos are her actual meal — never learn them as
+      // candidates for other meals.
+      if (!isUserPhoto) {
+        fetch("/api/food-image/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dish_key: dishKey(analysis.meal_name, analysis.foods),
+            meal_name: analysis.meal_name,
+            foods: analysis.foods,
+            photo_url: safePhoto,
+            verdict: "chosen",
+          }),
+        }).catch(() => {})
+      }
 
       // Live coach: guidance for the next meal, based on today so far.
       fetchCoachTip()
