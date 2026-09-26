@@ -1,8 +1,19 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "../../lib/supabase"
+
+function AuthErrorNotice() {
+  const searchParams = useSearchParams()
+  const failed = searchParams.get("error") === "auth_callback_failed"
+  if (!failed) return null
+  return (
+    <p className="text-xs text-center text-red-500">
+      That login link didn&apos;t work — it may have expired. Request a new one below.
+    </p>
+  )
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -34,7 +45,11 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: process.env.NEXT_PUBLIC_APP_URL,
+        // Point the magic link at the callback route that redeems the
+        // code for a session. Using the page's own origin means this
+        // works on production and preview deployments without relying
+        // on an env var being set correctly.
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     })
 
@@ -75,6 +90,10 @@ export default function LoginPage() {
 
         {/* CARD */}
         <div className="bg-surface/80 backdrop-blur border border-hair rounded-[22px] p-6 space-y-4 shadow-xl">
+
+          <Suspense fallback={null}>
+            <AuthErrorNotice />
+          </Suspense>
 
           {!sent ? (
             <>
