@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
-import { getRouteUser } from "@/lib/supabaseServer"
+import { getRouteUser, createServerSupabase } from "@/lib/supabaseServer"
+import { significantWords } from "@/lib/photoLearning"
 
 /**
  * GET /api/food-image?q=<query>&exclude=<csv>
@@ -66,7 +67,54 @@ async function alive(url: string): Promise<boolean> {
   }
 }
 
-/** Unsplash search — only when the key is configured. */
+/**
+ * The learning loop: her past picks win over any search.
+ * - Exact dish_key match with verdict chosen/liked -> lead with those URLs.
+ * - Fuzzy: >=2 significant words shared with the query -> also trusted.
+ * - Disliked URLs (exact or fuzzy) are excluded outright.
+ */
+async function learnedUrls(
+  userId: string,
+  dish: string,
+  q: string,
+  exclude: Set<string>
+): Promise<{ liked: string[]; disliked: string[] }> {
+  const liked: string[] = []
+  const disliked: string[] = []
+  try {
+    const supabase = await createServerSupabase()
+    const { data, error } = await supabase
+      .from("photo_feedback")
+      .select("dish_key, meal_name, foods, photo_url, verdict")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(300)
+    if (error || !data?.length) return { liked, disliked }
+
+    const qWords = new Set(significantWords(q + " " + dish))
+    const seen = new Set<string>()
+
+    for (const row of data) {
+      const url = String(row.photo_url || "").trim()
+      if (!url || seen.has(url) || isExcluded(url, exclude)) continue
+
+      const exact = dish && row.dish_key === dish
+      const rowWords = significantWords(
+        [row.meal_name || "", row.dish_key || "", ...(row.foods || [])].join(" ")
+      )
+      const shared = rowWords.filter((w) => qWords.has(w)).length
+      const relevant = exact || shared >= 2
+      if (!relevant) continue
+
+      seen.add(url)
+      if (row.verdict === "disliked") disliked.push(url)
+      else liked.push(url) // 'chosen' or 'liked'
+    }
+  } catch (err) {
+    console.error("PHOTO LEARNING LOOKUP FAILED:", err)
+  }
+  return { liked, disliked }
+}
 async function unsplashSearch(
   q: string,
   accessKey: string,
@@ -175,12 +223,26 @@ export async function GET(req: Request) {
   // URLs already shown elsewhere today — exclude them so the day view
   // doesn't repeat the same photo across meals.
   const exclude = buildExclude(params.get("exclude") || "")
+  const dish = params.get("dish")?.trim().slice(0, 200) || ""
+
+  // 0. Her past picks win over any search — this is what makes the FIRST
+  // photo right instead of making her swipe through a carousel.
+  const { liked, disliked } = dish
+    ? await learnedUrls(user.id, dish, q, exclude)
+    : { liked: [] as string[], disliked: [] as string[] }
+  for (const u of disliked) {
+    exclude.add(u.trim())
+    const id = photoId(u)
+    if (id) exclude.add(id)
+  }
+  // Past picks are trusted as-is (she already approved them); still cap at 6.
+  let urls: string[] = liked.slice(0, 6)
 
   // 1. Unsplash, when configured.
   const accessKey = process.env.UNSPLASH_ACCESS_KEY
-  let urls: string[] = accessKey
-    ? await unsplashSearch(q, accessKey, exclude)
-    : []
+  if (!urls.length && accessKey) {
+    urls = await unsplashSearch(q, accessKey, exclude)
+  }
 
   // 2. Openverse — free, no key.
   if (!urls.length) urls = await openverseSearch(q, exclude)

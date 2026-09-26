@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabase"
 import { getSmartFoodImages } from "@/lib/getSmartFoodImage"
+import { dishKey } from "@/lib/photoLearning"
 
 import { Sparkles, Dumbbell, Refrigerator, Apple } from "lucide-react"
 
@@ -211,7 +212,10 @@ export default function Home() {
       const imageUrls = await getSmartFoodImages(
         parsedAnalysis.meal_name,
         parsedAnalysis.foods,
-        { imageQuery: parsedAnalysis.image_query }
+        {
+          imageQuery: parsedAnalysis.image_query,
+          dishKey: dishKey(parsedAnalysis.meal_name, parsedAnalysis.foods),
+        }
       )
 
       // ✅ THEN: set both together
@@ -238,7 +242,9 @@ export default function Home() {
     setAnalysisError(null)
 
     try {
-      const urls = await getSmartFoodImages(s.name, s.uses)
+      const urls = await getSmartFoodImages(s.name, s.uses, {
+        dishKey: dishKey(s.name, s.uses),
+      })
       setPhotoUrls(urls)
       setPhotoIndex(0)
       setAnalysis({
@@ -326,6 +332,20 @@ export default function Home() {
         return
       }
 
+      // Photo learning loop: remember which photo she picked for this dish,
+      // so the next similar meal opens with a winner. Fire-and-forget.
+      fetch("/api/food-image/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dish_key: dishKey(analysis.meal_name, analysis.foods),
+          meal_name: analysis.meal_name,
+          foods: analysis.foods,
+          photo_url: safePhoto,
+          verdict: "chosen",
+        }),
+      }).catch(() => {})
+
       setRefreshFeed((prev) => prev + 1)
 
       setSaveSuccess(true)
@@ -344,6 +364,65 @@ export default function Home() {
     } catch (err) {
       console.error(err)
       setIsSaving(false)
+    }
+  }
+
+  // -------------------------
+  // 👎 PHOTO FEEDBACK
+  // -------------------------
+  const recordPhotoVerdict = (
+    photo_url: string,
+    verdict: "disliked",
+    dish_key: string,
+    meal_name?: string,
+    foods?: any
+  ) => {
+    fetch("/api/food-image/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dish_key, meal_name, foods, photo_url, verdict }),
+    }).catch(() => {})
+  }
+
+  /** Thumbs-down on one photo: record it, pull it from the candidates. */
+  const handleDislikePhoto = (index: number) => {
+    const url = photoUrls[index]
+    if (!url || !analysis) return
+    recordPhotoVerdict(
+      url,
+      "disliked",
+      dishKey(analysis.meal_name, analysis.foods),
+      analysis.meal_name,
+      analysis.foods
+    )
+    const next = photoUrls.filter((_, i) => i !== index)
+    setPhotoUrls(next)
+    setPhotoIndex(0)
+  }
+
+  /** "None of these look right": dislike the whole batch, fetch a fresh one. */
+  const handleNoneOfThesePhotos = async () => {
+    if (!analysis || photoUrls.length === 0) return
+    const key = dishKey(analysis.meal_name, analysis.foods)
+    const shown = [...photoUrls]
+    for (const url of shown) {
+      recordPhotoVerdict(url, "disliked", key, analysis.meal_name, analysis.foods)
+    }
+    setAnalyzing(true)
+    try {
+      const urls = await getSmartFoodImages(
+        analysis.meal_name,
+        analysis.foods,
+        {
+          imageQuery: analysis.image_query,
+          dishKey: key,
+          exclude: shown,
+        }
+      )
+      setPhotoUrls(urls)
+      setPhotoIndex(0)
+    } finally {
+      setAnalyzing(false)
     }
   }
 
@@ -542,6 +621,8 @@ export default function Home() {
           analyzing={analyzing}
           isSaving={isSaving}
           saveSuccess={saveSuccess}
+          onDislikePhoto={handleDislikePhoto}
+          onNoneOfThesePhotos={handleNoneOfThesePhotos}
           onCancel={() => {
             setPhotoUrls([])
             setPhotoIndex(0)
