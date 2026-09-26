@@ -95,14 +95,17 @@ async function unsplashSearch(
     const organic = (data.results || []).filter((r: any) => !r.sponsorship)
     const pool = organic.length > 0 ? organic : data.results || []
 
-    return [
-      ...new Set(
-        pool
-          .map((r: any) => r.urls?.regular)
-          .filter((u: any) => typeof u === "string" && u.length > 0)
-          .filter((u: string) => !isExcluded(u, exclude))
-      ),
-    ].slice(0, 6)
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const r of pool) {
+      const u: unknown = r?.urls?.regular
+      if (typeof u !== "string" || !u.length || isExcluded(u, exclude)) continue
+      if (seen.has(u)) continue
+      seen.add(u)
+      out.push(u)
+      if (out.length >= 6) break
+    }
+    return out
   } catch (err) {
     console.error("UNSPLASH SEARCH FAILED:", err)
     return []
@@ -137,18 +140,16 @@ async function openverseSearch(
       done()
     }
 
-    const candidates = [
-      ...new Set(
-        (data?.results || [])
-          .map((r: any) => r?.url)
-          .filter(
-            (u: any) =>
-              typeof u === "string" &&
-              /^https:\/\//.test(u) &&
-              !isExcluded(u, exclude)
-          )
-      ),
-    ].slice(0, 8)
+    const seen = new Set<string>()
+    const candidates: string[] = []
+    for (const r of data?.results || []) {
+      const u: unknown = r?.url
+      if (typeof u !== "string" || !/^https:\/\//.test(u) || isExcluded(u, exclude)) continue
+      if (seen.has(u)) continue
+      seen.add(u)
+      candidates.push(u)
+      if (candidates.length >= 8) break
+    }
 
     // Liveness check in parallel; keep the survivors, cap at 6.
     const checks = await Promise.all(
