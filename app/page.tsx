@@ -72,6 +72,7 @@ export default function Home() {
     tip: CoachTip
     nextMeal: string
     followThrough: string | null
+    doneForDay?: boolean
   } | null>(null)
 
   // Continuous 0→1 scroll progress (not a hard threshold) so the header
@@ -410,23 +411,35 @@ export default function Home() {
   // -------------------------
   const PENDING_SUGGESTION_KEY = "pendingCoachSuggestion"
 
-  // Did the just-saved meal follow through on the previous tip's focus?
-  // Quiet by design: returns the covered focus, or null (say nothing).
+  // Which macros did the just-saved meal meaningfully cover? Checks ALL of
+  // them, not just the tip's focus — a beef stew that delivered protein AND
+  // carbs should say both, so she learns what her meals actually give her.
+  // Quiet by design: returns the ack line, or null (say nothing on a miss).
   const checkFollowThrough = (meal: Analysis | null): string | null => {
     try {
       const raw = localStorage.getItem(PENDING_SUGGESTION_KEY)
       if (!raw || !meal) return null
       const pending = JSON.parse(raw)
-      const focus = pending?.focus
-      if (!["protein", "carbs", "fat"].includes(focus)) return null
       // Ancient suggestions don't count — 36h max.
       if (pending.at && Date.now() - pending.at > 36 * 3600 * 1000) return null
-      const mealVal = Number((meal as any)[focus]) || 0
-      const remainingVal = Number(pending?.remaining?.[focus]) || 0
+      const remaining = pending.remaining || {}
       const floors: Record<string, number> = { protein: 8, carbs: 12, fat: 7 }
-      if (mealVal < (floors[focus] ?? 8)) return null
-      if (remainingVal <= 0) return focus // already at goal — any solid amount counts
-      return mealVal >= 0.25 * remainingVal ? focus : null
+      const covered: string[] = []
+      for (const m of ["protein", "carbs", "fat"]) {
+        const mealVal = Number((meal as any)[m]) || 0
+        if (mealVal < (floors[m] ?? 8)) continue
+        const remVal = Number(remaining[m]) || 0
+        // Covered = a solid share of what was left (or at/past goal already).
+        if (remVal <= 0 || mealVal >= 0.25 * remVal) covered.push(m)
+      }
+      if (covered.length === 0) return null
+      const list =
+        covered.length === 1
+          ? covered[0]
+          : covered.length === 2
+            ? `${covered[0]} and ${covered[1]}`
+            : `${covered[0]}, ${covered[1]}, and ${covered[2]}`
+      return `That meal had your ${list} covered.`
     } catch {
       return null
     }
@@ -462,19 +475,25 @@ export default function Home() {
       })
       const res = await fetch(`/api/coach/next?${params.toString()}`)
       const json = await res.json()
+      // Done for the day: no more "next meal" push — just closure (plus
+      // any follow-through ack above). The tip itself is skipped.
+      if (json?.doneForDay) {
+        setCoachTip({
+          tip: { headline: "", focus: "balanced", detail: "", suggestions: [] },
+          nextMeal: "",
+          followThrough,
+          doneForDay: true,
+        })
+        return
+      }
       if (json?.tip) {
-        // Remember this suggestion; the NEXT logged meal gets checked against it.
+        // Remember the remaining macros; the NEXT logged meal gets checked
+        // against all of them. Expires with the next meal either way.
         try {
-          if (["protein", "carbs", "fat"].includes(json.tip.focus)) {
-            localStorage.setItem(
-              PENDING_SUGGESTION_KEY,
-              JSON.stringify({
-                focus: json.tip.focus,
-                remaining: json.remaining || {},
-                at: Date.now(),
-              })
-            )
-          }
+          localStorage.setItem(
+            PENDING_SUGGESTION_KEY,
+            JSON.stringify({ remaining: json.remaining || {}, at: Date.now() })
+          )
         } catch {}
         setCoachTip({
           tip: json.tip,
@@ -585,6 +604,7 @@ export default function Home() {
           tip={coachTip.tip}
           nextMeal={coachTip.nextMeal}
           followThrough={coachTip.followThrough}
+          doneForDay={coachTip.doneForDay}
           onClose={() => setCoachTip(null)}
         />
       )}
