@@ -6,7 +6,7 @@ import { supabase } from "../lib/supabase"
 import { getSmartFoodImages, fallbackSet } from "@/lib/getSmartFoodImage"
 import { dishKey } from "@/lib/photoLearning"
 
-import { Sparkles, Dumbbell, Refrigerator, Apple } from "lucide-react"
+import { Sparkles, Dumbbell, Refrigerator } from "lucide-react"
 
 import Upload from "@/components/Upload"
 import DailySummary from "@/components/DailySummary"
@@ -14,7 +14,6 @@ import MealFeed from "@/components/MealFeed"
 import MealReviewCard from "@/components/MealReviewCard"
 import CoachNext, { CoachTip } from "@/components/CoachNext"
 import FridgeSuggest, { FridgeSuggestion } from "@/components/FridgeSuggest"
-import CoachReview from "@/components/CoachReview"
 import UserInfo from "@/components/UserInfo"
 import WorkoutLogger from "@/components/WorkoutLogger"
 
@@ -59,7 +58,6 @@ export default function Home() {
   const [workoutLoggerOpen, setWorkoutLoggerOpen] = useState(false)
   const [mealChooserOpen, setMealChooserOpen] = useState(false)
   const [fridgeOpen, setFridgeOpen] = useState(false)
-  const [coachOpen, setCoachOpen] = useState(false)
   const [coachTip, setCoachTip] = useState<{
     tip: CoachTip
     nextMeal: string
@@ -532,16 +530,6 @@ export default function Home() {
             Log workout
           </button>
         </div>
-
-        <button
-          onClick={() => setCoachOpen(true)}
-          className="group w-full flex items-center justify-center gap-2 bg-surface border border-hair rounded-2xl py-3 text-sm font-bold text-ink-dim transition-all duration-200 ease-spring hover:border-burn/40 hover:text-ink hover:bg-surface-2 active:scale-[0.98]"
-        >
-          <span className="w-5 h-5 rounded-full bg-gradient-to-br from-burn to-burn-2 flex items-center justify-center transition-transform duration-300 ease-spring group-active:scale-[1.15]">
-            <Apple size={11} className="text-ground" />
-          </span>
-          Review my day
-        </button>
         </div>
       )}
 
@@ -746,8 +734,6 @@ export default function Home() {
         onClose={() => setFridgeOpen(false)}
         onLog={logFridgeSuggestion}
       />
-
-      <CoachReview open={coachOpen} onClose={() => setCoachOpen(false)} />
     </main>
   </div>
  )
