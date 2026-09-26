@@ -188,20 +188,32 @@ async function openverseSearch(
       done()
     }
 
+    const qWords = significantWords(q)
     const seen = new Set<string>()
-    const candidates: string[] = []
+    const scored: { url: string; score: number }[] = []
     for (const r of data?.results || []) {
       const u: unknown = r?.url
       if (typeof u !== "string" || !/^https:\/\//.test(u) || isExcluded(u, exclude)) continue
       if (seen.has(u)) continue
       seen.add(u)
-      candidates.push(u)
-      if (candidates.length >= 8) break
+      // Relevance gate: the photo's title/tags must share at least one
+      // significant word with the query, or it's junk ("Spicy Meatballs"
+      // for a hummus search). Rank by shared-word count.
+      const hay = significantWords(
+        [r?.title || "", ...((r?.tags || []).map((t: any) => t?.name || ""))].join(" ")
+      )
+      const score = hay.filter((w) => qWords.includes(w)).length
+      if (score === 0) continue
+      scored.push({ url: u, score })
+      if (scored.length >= 12) break
     }
+    scored.sort((a, b) => b.score - a.score)
 
     // Liveness check in parallel; keep the survivors, cap at 6.
     const checks = await Promise.all(
-      candidates.map(async (u) => ((await alive(u)) ? u : null))
+      scored
+        .slice(0, 8)
+        .map(async ({ url }) => ((await alive(url)) ? url : null))
     )
     return checks.filter((u): u is string => !!u).slice(0, 6)
   } catch (err) {
@@ -246,6 +258,23 @@ export async function GET(req: Request) {
 
   // 2. Openverse — free, no key.
   if (!urls.length) urls = await openverseSearch(q, exclude)
+
+  // 2b. Weak search fallback: if the full query returned almost nothing
+  // (e.g. "almond flour crackers hummus cheese" — too specific for any
+  // index), retry once with just the head words. A photo of the lead
+  // item beats a random fallback.
+  if (urls.length < 2) {
+    const short = significantWords(q).slice(0, 3).join(" ")
+    if (short && short.toLowerCase() !== q.toLowerCase()) {
+      for (const u of urls) {
+        exclude.add(u.trim())
+        const id = photoId(u)
+        if (id) exclude.add(id)
+      }
+      const more = await openverseSearch(short, exclude)
+      urls = [...urls, ...more].slice(0, 6)
+    }
+  }
 
   // 3. Client-side curated fallbacks.
   if (!urls.length) {
