@@ -344,7 +344,7 @@ export default function DailySummary(props: Props) {
     calories = Math.round(calories)
 
     const protein = Math.round(w * 0.8)
-    const fat = Math.round((calories * 0.25) / 9)
+    const fat = Math.round((calories * 0.3) / 9)
     const carbs = Math.round(
       (calories - protein * 4 - fat * 9) / 4
     )
