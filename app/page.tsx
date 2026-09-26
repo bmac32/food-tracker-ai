@@ -37,7 +37,6 @@ export default function Home() {
   // photo_candidates so the feed can offer the same picker later.
   const [photoUrls, setPhotoUrls] = useState<string[]>([])
   const [photoIndex, setPhotoIndex] = useState(0)
-  const [refreshingPhotos, setRefreshingPhotos] = useState(false)
   const photoUrl = photoUrls[photoIndex] ?? null
   const [analyzing, setAnalyzing] = useState(false)
 
@@ -224,27 +223,6 @@ export default function Home() {
     } finally {
       setAnalyzing(false)
       setMealText("")
-    }
-  }
-
-  // -------------------------
-  // 🔄 REFRESH PHOTO CANDIDATES ("none of these match")
-  // -------------------------
-  const refreshPhotoCandidates = async () => {
-    if (!analysis || refreshingPhotos) return
-    setRefreshingPhotos(true)
-    try {
-      const urls = await getSmartFoodImages(
-        analysis.meal_name,
-        analysis.foods,
-        { imageQuery: analysis.image_query || "" }
-      )
-      setPhotoUrls(urls)
-      setPhotoIndex(0)
-    } catch (err) {
-      console.error("Photo refresh failed", err)
-    } finally {
-      setRefreshingPhotos(false)
     }
   }
 
@@ -548,8 +526,6 @@ export default function Home() {
           images={photoUrls}
           imageIndex={photoIndex}
           onImageChange={setPhotoIndex}
-          onRefreshImages={refreshPhotoCandidates}
-          refreshingImages={refreshingPhotos}
           analysis={analysis}
           note={note}
           setNote={setNote}
