@@ -607,11 +607,6 @@ export default function MealFeed({
                       ))}
                     </div>
 
-                    {/* Portion balance — collapsible, quick pop in/out */}
-                    {Array.isArray(ai?.food_items) && ai.food_items.length > 0 && (
-                      <PortionBalance items={ai.food_items} className="pt-2" />
-                    )}
-
                     {meal.note && <p className="text-sm text-ink">{meal.note}</p>}
 
                     {openInsightMealId === meal.id && (
@@ -630,6 +625,11 @@ export default function MealFeed({
                       <span className="text-carb">{ai?.carbs || 0} c</span>
                       <span className="text-fat">{ai?.fat || 0} f</span>
                     </div>
+
+                    {/* Portion balance — breakdown of the totals above */}
+                    {Array.isArray(ai?.food_items) && ai.food_items.length > 0 && (
+                      <PortionBalance items={ai.food_items} className="pt-2" />
+                    )}
 
                     {hasInsight && (
                       <div className="text-[11px] text-ink-faint pt-2 italic">

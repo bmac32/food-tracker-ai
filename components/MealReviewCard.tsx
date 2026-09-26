@@ -236,8 +236,6 @@ export default function MealReviewCard({
           {/* PORTION BALANCE — hidden until asked for. Inform, don't instruct:
               the share bar lets the "huh, my portions are off" moment happen
               on its own. No steppers, no judgment. */}
-          <PortionBalance items={hasPortions ? items : []} className="mt-3" />
-
           <div className="flex gap-2 mt-3">
             <input
               value={newFood}
@@ -261,6 +259,9 @@ export default function MealReviewCard({
           <span className="text-carb">{shown.carbs} carbs</span>
           <span className="text-fat">{shown.fat} fat</span>
         </div>
+
+        {/* PORTION BALANCE — breakdown of the totals above */}
+        <PortionBalance items={hasPortions ? items : []} />
 
         {/* NOTE */}
         <textarea
