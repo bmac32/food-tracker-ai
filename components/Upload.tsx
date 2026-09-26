@@ -1,7 +1,7 @@
 "use client"
 
 type Props = {
-  onFileSelect: (file: File) => void
+  onFileSelect: (files: File[]) => void
 }
 
 export default function Upload({ onFileSelect }: Props) {
@@ -20,11 +20,14 @@ export default function Upload({ onFileSelect }: Props) {
       <input
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={(e) => {
-          if (e.target.files?.[0]) {
-            onFileSelect(e.target.files[0])
+          const files = Array.from(e.target.files || []).slice(0, 4)
+          if (files.length > 0) {
+            onFileSelect(files)
           }
+          e.target.value = "" // allow re-picking the same photos
         }}
       />
     </label>
