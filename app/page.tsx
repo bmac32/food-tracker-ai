@@ -33,6 +33,7 @@ type Analysis = {
   carbs: number | string
   fat: number | string
   image_query?: string
+  photos_analyzed?: number
 }
 
 export default function Home() {
@@ -181,6 +182,7 @@ export default function Home() {
         protein: data?.protein ?? 5,
         carbs: data?.carbs ?? 30,
         fat: data?.fat ?? 5,
+        photos_analyzed: data?.photos_analyzed ?? 1,
       }
 
       setAnalysis(parsedAnalysis)

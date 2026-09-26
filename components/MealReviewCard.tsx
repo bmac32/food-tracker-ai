@@ -196,6 +196,11 @@ export default function MealReviewCard({
           <h2 className="text-ink text-lg font-bold tracking-tight">
             {analysis.meal_name}
           </h2>
+          {(analysis.photos_analyzed ?? 1) > 1 && (
+            <p className="text-ink-dim text-xs mt-0.5">
+              Analyzed {analysis.photos_analyzed} photos as one meal
+            </p>
+          )}
         </div>
       </div>
 
