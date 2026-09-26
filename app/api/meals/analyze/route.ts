@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { getRouteUser } from "@/lib/supabaseServer"
+import { usdaMacrosFor } from "@/lib/usda"
 
 /**
  * POST /api/meals/analyze
@@ -125,33 +126,96 @@ function extractJson(text: string): any {
 const JSON_INSTRUCTION = `Return ONLY valid JSON, no markdown fences:
 {
  "meal_name": "",
- "foods": ["specific foods only"],
- "protein": number,
- "carbs": number,
- "fat": number,
- "calories": number,
+ "foods": [{"item": "plain food name, no quantities", "grams": number, "protein": number, "carbs": number, "fat": number}],
  "image_query": "3-6 word stock-photo search describing this dish as plated, e.g. 'fluffy scrambled eggs on toast'"
 }`
 
 /**
- * Estimation discipline — big-tracker accuracy without manual weighing.
- * The model estimates macros first (USDA-typical values, standard
- * home-cooked portions, no invented hidden fats); calories are then
- * DERIVED server-side via Atwater 4/4/9 so the numbers can't contradict
- * each other.
+ * Hybrid accuracy: the model identifies foods and estimates PORTION GRAMS
+ * (its best macro guess rides along as fallback). The server then verifies
+ * each item against USDA FoodData Central lab data and uses the lab values
+ * whenever they exist — the AI only does portion math, never macro invention.
+ * Calories are DERIVED via Atwater 4/4/9 so nothing can contradict itself.
  */
-const ESTIMATION_RULES = `Estimate protein, carbs, and fat FIRST, using USDA FoodData Central typical values for standard home-cooked portions — not restaurant-sized unless the user says so. Only count oils, butter, dressings, or sauces if the user mentions them or they are clearly visible in the photo; never assume hidden fats. Be honest per macro; do not round toward "nice" numbers. The calories field is informational only — the server recomputes it as protein*4 + carbs*4 + fat*9.`
+const ESTIMATION_RULES = `For each food: give a plain item name (no quantities in the name), your best estimate of grams for a standard home-cooked portion (not restaurant-sized unless the user says so), and your best macro guess per that portion. Only count oils, butter, dressings, or sauces if the user mentions them or they are clearly visible in the photo; never assume hidden fats. The server verifies every item against the USDA database and uses lab-measured values when found — your grams do the portion math, your macros are only the fallback.`
 
-function finalize(raw: any, fallbackFoods: string[] = []) {
-  const foods = cleanFoods(raw?.foods?.length ? raw.foods : fallbackFoods)
+type FoodItem = {
+  item: string
+  grams: number
+  protein: number
+  carbs: number
+  fat: number
+}
+
+/** Normalize the model's foods array (objects now; tolerate legacy strings). */
+function toFoodItems(raw: any, fallbackFoods: string[]): FoodItem[] {
+  const list = Array.isArray(raw?.foods) ? raw.foods : []
+  const items: FoodItem[] = []
+  for (const f of list) {
+    if (typeof f === "string") {
+      const item = f.trim()
+      if (item) items.push({ item, grams: 0, protein: 0, carbs: 0, fat: 0 })
+    } else if (f && typeof f === "object") {
+      const item = String(f.item || "").trim()
+      if (!item) continue
+      items.push({
+        item,
+        grams: Number(f.grams) || 0,
+        protein: Number(f.protein) || 0,
+        carbs: Number(f.carbs) || 0,
+        fat: Number(f.fat) || 0,
+      })
+    }
+  }
+  if (!items.length) {
+    for (const s of fallbackFoods) {
+      const item = String(s || "").trim()
+      if (item) items.push({ item, grams: 0, protein: 0, carbs: 0, fat: 0 })
+    }
+  }
+  return items.slice(0, 8)
+}
+
+async function finalize(raw: any, fallbackFoods: string[] = []) {
+  const items = toFoodItems(raw, fallbackFoods)
+  const foods = cleanFoods(items.map((i) => i.item))
   const imageQuery =
     typeof raw?.image_query === "string" ? raw.image_query.slice(0, 60).trim() : ""
-  const protein = Number(raw?.protein) || 0
-  const carbs = Number(raw?.carbs) || 0
-  const fat = Number(raw?.fat) || 0
+
+  // Hybrid: USDA lab values per item when found, AI guess otherwise.
+  let protein = 0
+  let carbs = 0
+  let fat = 0
+  let usdaVerified = 0
+  await Promise.all(
+    items.map(async (it) => {
+      const per100 = await usdaMacrosFor(it.item)
+      let p: number
+      let c: number
+      let f: number
+      if (per100 && it.grams > 0) {
+        const k = it.grams / 100
+        p = per100.protein * k
+        c = per100.carbs * k
+        f = per100.fat * k
+        usdaVerified += 1
+      } else {
+        p = it.protein
+        c = it.carbs
+        f = it.fat
+      }
+      protein += p
+      carbs += c
+      fat += f
+    })
+  )
+  protein = Math.round(protein * 10) / 10
+  carbs = Math.round(carbs * 10) / 10
+  fat = Math.round(fat * 10) / 10
+
   // Atwater 4/4/9 — derived, never independently estimated, so the macros
   // and calories always agree with each other.
-  const derivedCalories = Math.round(protein * 4 + carbs * 4 + fat * 9)
+  const calories = Math.round(protein * 4 + carbs * 4 + fat * 9)
   return {
     meal_name: raw?.meal_name || "Meal",
     foods,
@@ -160,7 +224,9 @@ function finalize(raw: any, fallbackFoods: string[] = []) {
     protein,
     carbs,
     fat,
-    calories: derivedCalories || Number(raw?.calories) || 0,
+    calories,
+    usda_verified: usdaVerified,
+    usda_items: items.length,
   }
 }
 
@@ -170,7 +236,7 @@ function finalize(raw: any, fallbackFoods: string[] = []) {
 async function analyzeText(text: string) {
   const res = await getAnthropic().messages.create({
     model: TEXT_MODEL,
-    max_tokens: 400,
+    max_tokens: 700,
     messages: [
       {
         role: "user",
@@ -232,7 +298,7 @@ async function analyzePhotoWithGemini(base64Image: string) {
 async function analyzePhotoWithClaude(base64Image: string) {
   const res = await getAnthropic().messages.create({
     model: VISION_FALLBACK_MODEL,
-    max_tokens: 400,
+    max_tokens: 700,
     messages: [
       {
         role: "user",
