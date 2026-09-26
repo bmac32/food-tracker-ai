@@ -21,6 +21,12 @@ const CATEGORY_FALLBACKS: { match: RegExp; url: string }[] = [
 
 const GENERIC_FALLBACK = U("photo-1504674900247-0877df9cc836")
 
+/** All fallback URLs we trust (already used above — no unverified IDs). */
+const FALLBACK_POOL = [
+  ...CATEGORY_FALLBACKS.map((c) => c.url),
+  GENERIC_FALLBACK,
+]
+
 export function fallbackImage(mealName?: string): string {
   if (mealName) {
     for (const c of CATEGORY_FALLBACKS) {
@@ -28,6 +34,22 @@ export function fallbackImage(mealName?: string): string {
     }
   }
   return GENERIC_FALLBACK
+}
+
+/**
+ * A small swipeable set of fallbacks instead of a single image, so the
+ * photo carousel still offers choices (and its arrows) when Unsplash
+ * can't deliver. Category match first, then a deterministic rotation so
+ * different meals don't all open on the same picture.
+ */
+export function fallbackSet(mealName?: string): string[] {
+  const first = fallbackImage(mealName)
+  const rest = FALLBACK_POOL.filter((u) => u !== first)
+  let h = 0
+  for (const ch of mealName || "") h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  const offset = rest.length ? h % rest.length : 0
+  const rotated = [...rest.slice(offset), ...rest.slice(0, offset)]
+  return [first, ...rotated.slice(0, 3)]
 }
 
 export type ImageLookupOpts = {
@@ -72,12 +94,12 @@ export async function getSmartFoodImages(
 
     const res = await fetch(`/api/food-image?${params.toString()}`)
 
-    if (!res.ok) return [fallbackImage(mealName)]
+    if (!res.ok) return fallbackSet(mealName)
 
     const data = await res.json()
     // Server signals fallback:true when the key is missing or the search
     // failed — use a category-matched fallback instead of its generic one.
-    if (data.fallback) return [fallbackImage(mealName)]
+    if (data.fallback) return fallbackSet(mealName)
 
     const urls = Array.isArray(data.urls)
       ? data.urls.filter((u: any) => typeof u === "string")
@@ -86,6 +108,6 @@ export async function getSmartFoodImages(
     return urls.length > 0 ? urls : [fallbackImage(mealName)]
   } catch (err) {
     console.error("Food image lookup failed", err)
-    return [fallbackImage(mealName)]
+    return fallbackSet(mealName)
   }
 }
