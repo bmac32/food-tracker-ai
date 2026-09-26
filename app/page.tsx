@@ -20,6 +20,14 @@ import WorkoutLogger from "@/components/WorkoutLogger"
 type Analysis = {
   meal_name: string
   foods: string[]
+  food_items?: {
+    item: string
+    grams: number
+    protein: number
+    carbs: number
+    fat: number
+    per100: { protein: number; carbs: number; fat: number } | null
+  }[]
   calories: number | string
   protein: number | string
   carbs: number | string
