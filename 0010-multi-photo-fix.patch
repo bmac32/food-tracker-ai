@@ -1,0 +1,140 @@
+From e14b3c6c9794eb597fd4929345cc28c6087b6f3b Mon Sep 17 00:00:00 2001
+From: Pepper <pepper@local>
+Date: Sat, 26 Sep 2026 17:36:11 -0500
+Subject: [PATCH] Fix multi-photo analysis: labeled interleaved photos +
+ per-photo attention prompt; show 'Analyzed N photos as one meal'
+
+---
+ app/api/meals/analyze/route.ts | 47 ++++++++++++++++++++++------------
+ app/page.tsx                   |  2 ++
+ components/MealReviewCard.tsx  |  5 ++++
+ 3 files changed, 38 insertions(+), 16 deletions(-)
+
+diff --git a/app/api/meals/analyze/route.ts b/app/api/meals/analyze/route.ts
+index 9cfe14f..b039fb8 100644
+--- a/app/api/meals/analyze/route.ts
++++ b/app/api/meals/analyze/route.ts
+@@ -282,8 +282,10 @@ async function analyzeText(text: string) {
+ function photoPrompt(count: number): string {
+   const multi =
+     `These ${count} photos are all the SAME meal (different angles or dishes of one meal). ` +
+-    `Identify every visible food across ALL photos with realistic portion sizes, then estimate macros for the whole meal as one. ` +
+-    `Merge everything into a single ingredient list — do NOT double-count the same food appearing in more than one photo.`
++    `They are labeled Photo 1 of ${count} through Photo ${count} of ${count} below. ` +
++    `IMPORTANT: you must consider EVERY photo, not just the first. First, silently note in a short phrase what each photo shows. ` +
++    `Then identify every visible food across ALL photos with realistic portion sizes, and estimate macros for the whole meal as one. ` +
++    `Merge everything into a single ingredient list — if the same food appears in more than one photo, count it only once.`
+   const single =
+     `Look at this meal photo. Identify every visible food with realistic portion sizes, then estimate macros.`
+   return `You are a nutrition expert. ${count > 1 ? multi : single}\n\n${JSON_INSTRUCTION}\n\n${ESTIMATION_RULES}`
+@@ -307,14 +309,19 @@ async function analyzePhotoWithGemini(base64Images: string[]) {
+               {
+                 text: photoPrompt(base64Images.length),
+               },
++              // Labeled, interleaved images: "Photo 1 of N" labels force the
++              // model to attend to every photo instead of fixating on the first.
+               // NOTE: the Gemini REST field is camelCase `inlineData`
+               // (snake_case `inline_data` silently fails).
+-              ...base64Images.map((data) => ({
+-                inlineData: {
+-                  mimeType: "image/jpeg",
+-                  data,
++              ...base64Images.flatMap((data, i) => [
++                { text: `Photo ${i + 1} of ${base64Images.length}:` },
++                {
++                  inlineData: {
++                    mimeType: "image/jpeg",
++                    data,
++                  },
+                 },
+-              })),
++              ]),
+             ],
+           },
+         ],
+@@ -342,14 +349,20 @@ async function analyzePhotoWithClaude(base64Images: string[]) {
+       {
+         role: "user",
+         content: [
+-          ...base64Images.map((data) => ({
+-            type: "image" as const,
+-            source: {
+-              type: "base64" as const,
+-              media_type: "image/jpeg" as const,
+-              data,
++          ...base64Images.flatMap((data, i) => [
++            {
++              type: "text" as const,
++              text: `Photo ${i + 1} of ${base64Images.length}:`,
+             },
+-          })),
++            {
++              type: "image" as const,
++              source: {
++                type: "base64" as const,
++                media_type: "image/jpeg" as const,
++                data,
++              },
++            },
++          ]),
+           {
+             type: "text" as const,
+             text: photoPrompt(base64Images.length),
+@@ -427,14 +440,16 @@ export async function POST(req: Request) {
+ 
+     // Pass 1: cheap Gemini structured pass
+     try {
+-      return NextResponse.json(await analyzePhotoWithGemini(base64Images))
++      const result = await analyzePhotoWithGemini(base64Images)
++      return NextResponse.json({ ...result, photos_analyzed: urls.length })
+     } catch (err) {
+       console.error("GEMINI PHOTO FAILED:", err)
+     }
+ 
+     // Pass 2: cheap Claude vision fallback
+     try {
+-      return NextResponse.json(await analyzePhotoWithClaude(base64Images))
++      const result = await analyzePhotoWithClaude(base64Images)
++      return NextResponse.json({ ...result, photos_analyzed: urls.length })
+     } catch (err) {
+       console.error("CLAUDE VISION FAILED:", err)
+     }
+diff --git a/app/page.tsx b/app/page.tsx
+index 9f0a42f..6abbaca 100644
+--- a/app/page.tsx
++++ b/app/page.tsx
+@@ -33,6 +33,7 @@ type Analysis = {
+   carbs: number | string
+   fat: number | string
+   image_query?: string
++  photos_analyzed?: number
+ }
+ 
+ export default function Home() {
+@@ -181,6 +182,7 @@ export default function Home() {
+         protein: data?.protein ?? 5,
+         carbs: data?.carbs ?? 30,
+         fat: data?.fat ?? 5,
++        photos_analyzed: data?.photos_analyzed ?? 1,
+       }
+ 
+       setAnalysis(parsedAnalysis)
+diff --git a/components/MealReviewCard.tsx b/components/MealReviewCard.tsx
+index 6628a93..77027ac 100644
+--- a/components/MealReviewCard.tsx
++++ b/components/MealReviewCard.tsx
+@@ -196,6 +196,11 @@ export default function MealReviewCard({
+           <h2 className="text-ink text-lg font-bold tracking-tight">
+             {analysis.meal_name}
+           </h2>
++          {(analysis.photos_analyzed ?? 1) > 1 && (
++            <p className="text-ink-dim text-xs mt-0.5">
++              Analyzed {analysis.photos_analyzed} photos as one meal
++            </p>
++          )}
+         </div>
+       </div>
+ 
+-- 
+2.43.0
+

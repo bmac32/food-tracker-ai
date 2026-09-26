@@ -48,13 +48,6 @@ const num = (v: unknown) => {
   return isNaN(n) ? 0 : Math.round(n * 10) / 10
 }
 
-function nextMealLabel(hour: number): string {
-  if (hour < 10) return "breakfast"
-  if (hour < 14) return "lunch"
-  if (hour < 21) return "dinner"
-  return "tomorrow's breakfast"
-}
-
 export async function GET(req: Request) {
   const { user, response } = await getRouteUser()
   if (!user) return response
@@ -65,7 +58,6 @@ export async function GET(req: Request) {
   const params = new URL(req.url).searchParams
   const start = params.get("start")
   const end = params.get("end")
-  const hour = Math.min(23, Math.max(0, parseInt(params.get("hour") || "12", 10) || 12))
   if (!start || !end) {
     return NextResponse.json({ error: "start and end required" }, { status: 400 })
   }
@@ -140,7 +132,26 @@ export async function GET(req: Request) {
     fat: Math.max(0, Math.round((goals.fat - totals.fat) * 10) / 10),
   }
 
-  const nextMeal = nextMealLabel(hour)
+  // Never label meals breakfast/lunch/dinner — people eat on different
+  // schedules and timezones, and a wrong guess discredits the coach.
+  const nextMeal = "your next meal"
+
+  // Done for the day: every macro is within a snack of its goal. Don't push
+  // another meal — the client shows a quiet closure card instead. This also
+  // skips the model call entirely.
+  const doneForDay =
+    remaining.protein <= Math.max(12, goals.protein * 0.15) &&
+    remaining.carbs <= Math.max(25, goals.carbs * 0.15) &&
+    remaining.fat <= Math.max(10, goals.fat * 0.15)
+  if (doneForDay) {
+    return NextResponse.json({
+      tip: null,
+      doneForDay: true,
+      nextMeal,
+      mealsLogged: mealLines.length,
+      remaining,
+    })
+  }
 
   let tip: any = null
   try {
@@ -150,7 +161,7 @@ export async function GET(req: Request) {
       messages: [
         {
           role: "user",
-          content: `You are a calm, encouraging nutrition coach inside a food-tracking app. The user just logged a meal. Based ONLY on what she's eaten so far today versus her goals, give short guidance for her next meal (${nextMeal}).
+          content: `You are a calm, encouraging nutrition coach inside a food-tracking app. The user just logged a meal. Based ONLY on what she's eaten so far today versus her goals, give short guidance for her next meal.
 
 CRITICAL — FOOD SENSITIVITY: she may have a complicated relationship with food. Never shame, scold, or moralize. Never label foods "good", "bad", "clean", "cheat", or "guilty". Never praise eating very little. Never suggest eating less, skipping meals, fasting, or "making up for" anything. Frame everything as what TO add and enjoy, not what to avoid. Every claim must come from the data below — never invent meals or numbers.
 
@@ -162,16 +173,16 @@ DATA:
 - Foods she eats often: ${usual.join("; ") || "unknown"}
 
 TASK: Write like a friendly dietitian texting her — plain-spoken, warm, brief, zero judgment. Subtle, not coachy.
-- "headline": casual and short, like "grab some protein at lunch". No hype, no exclamation marks.
+- "headline": casual and short, like "grab some protein at your next meal". No hype, no exclamation marks. Never name a meal (no breakfast/lunch/dinner) — always say "next meal".
 - "detail": exactly one sentence, conversational. If relevant, tie it to how she'll feel (energy, hunger) rather than the numbers. Never say she's "behind", "low", or "lacking" — just note what she hasn't had much of yet. At most one number, ideally none.
 - "suggestions": 3 specific, simple foods or small meals that fill the gap — prefer her usual foods when they fit. Keep each under 5 words.
 - The whole thing must read in 3 seconds. If she's on track across the board, say so warmly in one line (e.g. "you're eating well today — keep doing what you're doing") with 3 easy, balanced suggestions.
 
 Return ONLY valid JSON, no markdown fences:
 {
-  "headline": "short, casual, like 'grab some protein at lunch'",
+  "headline": "short, casual, like 'grab some protein at your next meal'",
   "focus": "protein" | "carbs" | "fat" | "balanced",
-  "detail": "1-2 sentences tying it to what she ate today; name the meal",
+  "detail": "1-2 sentences tying it to what she ate today; never name the meal — always say 'next meal'",
   "suggestions": ["specific food 1", "specific food 2", "specific food 3"]
 }`,
         },
