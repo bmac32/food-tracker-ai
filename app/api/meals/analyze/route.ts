@@ -133,19 +133,34 @@ const JSON_INSTRUCTION = `Return ONLY valid JSON, no markdown fences:
  "image_query": "3-6 word stock-photo search describing this dish as plated, e.g. 'fluffy scrambled eggs on toast'"
 }`
 
+/**
+ * Estimation discipline — big-tracker accuracy without manual weighing.
+ * The model estimates macros first (USDA-typical values, standard
+ * home-cooked portions, no invented hidden fats); calories are then
+ * DERIVED server-side via Atwater 4/4/9 so the numbers can't contradict
+ * each other.
+ */
+const ESTIMATION_RULES = `Estimate protein, carbs, and fat FIRST, using USDA FoodData Central typical values for standard home-cooked portions — not restaurant-sized unless the user says so. Only count oils, butter, dressings, or sauces if the user mentions them or they are clearly visible in the photo; never assume hidden fats. Be honest per macro; do not round toward "nice" numbers. The calories field is informational only — the server recomputes it as protein*4 + carbs*4 + fat*9.`
+
 function finalize(raw: any, fallbackFoods: string[] = []) {
   const foods = cleanFoods(raw?.foods?.length ? raw.foods : fallbackFoods)
   const imageQuery =
     typeof raw?.image_query === "string" ? raw.image_query.slice(0, 60).trim() : ""
+  const protein = Number(raw?.protein) || 0
+  const carbs = Number(raw?.carbs) || 0
+  const fat = Number(raw?.fat) || 0
+  // Atwater 4/4/9 — derived, never independently estimated, so the macros
+  // and calories always agree with each other.
+  const derivedCalories = Math.round(protein * 4 + carbs * 4 + fat * 9)
   return {
     meal_name: raw?.meal_name || "Meal",
     foods,
     primary_food: getPrimaryFood(foods),
     image_query: imageQuery,
-    protein: Number(raw?.protein) || 0,
-    carbs: Number(raw?.carbs) || 0,
-    fat: Number(raw?.fat) || 0,
-    calories: Number(raw?.calories) || 0,
+    protein,
+    carbs,
+    fat,
+    calories: derivedCalories || Number(raw?.calories) || 0,
   }
 }
 
@@ -159,7 +174,7 @@ async function analyzeText(text: string) {
     messages: [
       {
         role: "user",
-        content: `You are a nutrition expert. A user described their meal as: "${text}". Infer realistic ingredients and portion sizes.\n\n${JSON_INSTRUCTION}`,
+        content: `You are a nutrition expert. A user described their meal as: "${text}". Infer realistic ingredients and portion sizes.\n\n${JSON_INSTRUCTION}\n\n${ESTIMATION_RULES}`,
       },
     ],
   })
@@ -185,7 +200,7 @@ async function analyzePhotoWithGemini(base64Image: string) {
           {
             parts: [
               {
-                text: `You are a nutrition expert. Look at this meal photo. Identify every visible food with realistic portion sizes, then estimate macros.\n\n${JSON_INSTRUCTION}`,
+                text: `You are a nutrition expert. Look at this meal photo. Identify every visible food with realistic portion sizes, then estimate macros.\n\n${JSON_INSTRUCTION}\n\n${ESTIMATION_RULES}`,
               },
               {
                 // NOTE: the Gemini REST field is camelCase `inlineData`
@@ -232,7 +247,7 @@ async function analyzePhotoWithClaude(base64Image: string) {
           },
           {
             type: "text",
-            text: `You are a nutrition expert. Look at this meal photo. Identify every visible food with realistic portion sizes, then estimate macros.\n\n${JSON_INSTRUCTION}`,
+            text: `You are a nutrition expert. Look at this meal photo. Identify every visible food with realistic portion sizes, then estimate macros.\n\n${JSON_INSTRUCTION}\n\n${ESTIMATION_RULES}`,
           },
         ],
       },
