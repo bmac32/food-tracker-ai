@@ -196,5 +196,5 @@ Return ONLY valid JSON, no markdown fences:
     console.error("COACH NEXT FAILED:", err)
   }
 
-  return NextResponse.json({ tip, nextMeal, mealsLogged: mealLines.length })
+  return NextResponse.json({ tip, nextMeal, mealsLogged: mealLines.length, remaining })
 }

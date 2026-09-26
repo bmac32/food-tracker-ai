@@ -1,6 +1,6 @@
 "use client"
 
-import { Sparkles, X } from "lucide-react"
+import { Check, Sparkles, X } from "lucide-react"
 
 export type CoachTip = {
   headline: string
@@ -24,10 +24,12 @@ const FOCUS_COLOR: Record<CoachTip["focus"], string> = {
 export default function CoachNext({
   tip,
   nextMeal,
+  followThrough,
   onClose,
 }: {
   tip: CoachTip
   nextMeal: string
+  followThrough?: string | null
   onClose: () => void
 }) {
   return (
@@ -42,6 +44,13 @@ export default function CoachNext({
       </button>
 
       <div className="relative space-y-2">
+        {followThrough && (
+          <p className="flex items-center gap-1.5 text-[12px] font-medium text-ink-dim">
+            <Check size={12} className="text-protein shrink-0" />
+            That meal had your {followThrough} covered.
+          </p>
+        )}
+
         <div className="flex items-center gap-2">
           <span className="w-6 h-6 rounded-full bg-surface-2 border border-hair flex items-center justify-center shrink-0">
             <Sparkles size={12} className="text-ink-faint" />

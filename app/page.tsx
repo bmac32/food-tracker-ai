@@ -71,6 +71,7 @@ export default function Home() {
   const [coachTip, setCoachTip] = useState<{
     tip: CoachTip
     nextMeal: string
+    followThrough: string | null
   } | null>(null)
 
   // Continuous 0→1 scroll progress (not a hard threshold) so the header
@@ -403,6 +404,30 @@ export default function Home() {
   // -------------------------
   // 🎯 LIVE COACH — guidance for the NEXT meal, right after saving
   // -------------------------
+  const PENDING_SUGGESTION_KEY = "pendingCoachSuggestion"
+
+  // Did the just-saved meal follow through on the previous tip's focus?
+  // Quiet by design: returns the covered focus, or null (say nothing).
+  const checkFollowThrough = (meal: Analysis | null): string | null => {
+    try {
+      const raw = localStorage.getItem(PENDING_SUGGESTION_KEY)
+      if (!raw || !meal) return null
+      const pending = JSON.parse(raw)
+      const focus = pending?.focus
+      if (!["protein", "carbs", "fat"].includes(focus)) return null
+      // Ancient suggestions don't count — 36h max.
+      if (pending.at && Date.now() - pending.at > 36 * 3600 * 1000) return null
+      const mealVal = Number((meal as any)[focus]) || 0
+      const remainingVal = Number(pending?.remaining?.[focus]) || 0
+      const floors: Record<string, number> = { protein: 8, carbs: 12, fat: 7 }
+      if (mealVal < (floors[focus] ?? 8)) return null
+      if (remainingVal <= 0) return focus // already at goal — any solid amount counts
+      return mealVal >= 0.25 * remainingVal ? focus : null
+    } catch {
+      return null
+    }
+  }
+
   const fetchCoachTip = async () => {
     // Only for today — backfilling a past day doesn't need "next meal" advice.
     const today = new Date()
@@ -417,6 +442,14 @@ export default function Home() {
     start.setHours(0, 0, 0, 0)
     const end = new Date(viewing)
     end.setHours(23, 59, 59, 999)
+
+    // Follow-through check: the previous suggestion expires with this meal,
+    // whether or not it was followed. Say nothing on a miss.
+    const followThrough = checkFollowThrough(analysis)
+    try {
+      localStorage.removeItem(PENDING_SUGGESTION_KEY)
+    } catch {}
+
     try {
       const params = new URLSearchParams({
         start: start.toISOString(),
@@ -426,7 +459,24 @@ export default function Home() {
       const res = await fetch(`/api/coach/next?${params.toString()}`)
       const json = await res.json()
       if (json?.tip) {
-        setCoachTip({ tip: json.tip, nextMeal: json.nextMeal || "your next meal" })
+        // Remember this suggestion; the NEXT logged meal gets checked against it.
+        try {
+          if (["protein", "carbs", "fat"].includes(json.tip.focus)) {
+            localStorage.setItem(
+              PENDING_SUGGESTION_KEY,
+              JSON.stringify({
+                focus: json.tip.focus,
+                remaining: json.remaining || {},
+                at: Date.now(),
+              })
+            )
+          }
+        } catch {}
+        setCoachTip({
+          tip: json.tip,
+          nextMeal: json.nextMeal || "your next meal",
+          followThrough,
+        })
       }
     } catch {
       // Silent — the card just doesn't appear.
@@ -530,6 +580,7 @@ export default function Home() {
         <CoachNext
           tip={coachTip.tip}
           nextMeal={coachTip.nextMeal}
+          followThrough={coachTip.followThrough}
           onClose={() => setCoachTip(null)}
         />
       )}
