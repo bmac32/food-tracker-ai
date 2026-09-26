@@ -183,10 +183,21 @@ async function finalize(raw: any, fallbackFoods: string[] = []) {
     typeof raw?.image_query === "string" ? raw.image_query.slice(0, 60).trim() : ""
 
   // Hybrid: USDA lab values per item when found, AI guess otherwise.
+  // Per-item results are kept so the client can offer portion refinement
+  // (grams editing) and recompute macros without another round trip.
   let protein = 0
   let carbs = 0
   let fat = 0
   let usdaVerified = 0
+  const foodItems: {
+    item: string
+    grams: number
+    protein: number
+    carbs: number
+    fat: number
+    per100: { protein: number; carbs: number; fat: number } | null
+  }[] = []
+  const r1 = (n: number) => Math.round(n * 10) / 10
   await Promise.all(
     items.map(async (it) => {
       const per100 = await usdaMacrosFor(it.item)
@@ -207,6 +218,20 @@ async function finalize(raw: any, fallbackFoods: string[] = []) {
       protein += p
       carbs += c
       fat += f
+      foodItems.push({
+        item: it.item,
+        grams: it.grams,
+        protein: r1(p),
+        carbs: r1(c),
+        fat: r1(f),
+        per100: per100
+          ? {
+              protein: r1(per100.protein),
+              carbs: r1(per100.carbs),
+              fat: r1(per100.fat),
+            }
+          : null,
+      })
     })
   )
   protein = Math.round(protein * 10) / 10
@@ -219,6 +244,7 @@ async function finalize(raw: any, fallbackFoods: string[] = []) {
   return {
     meal_name: raw?.meal_name || "Meal",
     foods,
+    food_items: foodItems,
     primary_food: getPrimaryFood(foods),
     image_query: imageQuery,
     protein,
