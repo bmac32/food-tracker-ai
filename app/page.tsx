@@ -164,6 +164,7 @@ export default function Home() {
                 typeof f === "string" ? f : f?.item || "food"
               )
             : ["Meal"],
+        food_items: Array.isArray(data?.food_items) ? data.food_items : undefined,
         calories: data?.calories ?? 200,
         protein: data?.protein ?? 5,
         carbs: data?.carbs ?? 30,
@@ -212,6 +213,7 @@ export default function Home() {
                 typeof f === "string" ? f : f?.item || "food"
               )
             : [mealText],
+        food_items: Array.isArray(data?.food_items) ? data.food_items : undefined,
         image_query: data?.image_query || "",
         calories: data?.calories ?? 200,
         protein: data?.protein ?? 5,
