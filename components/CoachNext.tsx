@@ -47,7 +47,7 @@ export default function CoachNext({
         {followThrough && (
           <p className="flex items-center gap-1.5 text-[12px] font-medium text-ink-dim">
             <Check size={12} className="text-protein shrink-0" />
-            That meal had your {followThrough} covered.
+            {followThrough}
           </p>
         )}
 

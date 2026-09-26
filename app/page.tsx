@@ -410,23 +410,44 @@ export default function Home() {
   // -------------------------
   const PENDING_SUGGESTION_KEY = "pendingCoachSuggestion"
 
-  // Did the just-saved meal follow through on the previous tip's focus?
-  // Quiet by design: returns the covered focus, or null (say nothing).
+  // Significant words for matching a suggestion ("beef stew") to a logged
+  // food ("a bowl of beef stew").
+  const foodWords = (str: string): string[] =>
+    String(str || "")
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !["with", "and", "the", "for", "cup", "bow"].includes(w))
+
+  // Did the just-saved meal contain a food the coach actually suggested?
+  // Food-aware, not macro-aware: if she ate the suggested beef stew, say
+  // exactly that — never praise the wrong macro. Quiet by design: returns
+  // the ack line, or null (say nothing on a miss).
   const checkFollowThrough = (meal: Analysis | null): string | null => {
     try {
       const raw = localStorage.getItem(PENDING_SUGGESTION_KEY)
       if (!raw || !meal) return null
       const pending = JSON.parse(raw)
-      const focus = pending?.focus
-      if (!["protein", "carbs", "fat"].includes(focus)) return null
       // Ancient suggestions don't count — 36h max.
       if (pending.at && Date.now() - pending.at > 36 * 3600 * 1000) return null
-      const mealVal = Number((meal as any)[focus]) || 0
-      const remainingVal = Number(pending?.remaining?.[focus]) || 0
-      const floors: Record<string, number> = { protein: 8, carbs: 12, fat: 7 }
-      if (mealVal < (floors[focus] ?? 8)) return null
-      if (remainingVal <= 0) return focus // already at goal — any solid amount counts
-      return mealVal >= 0.25 * remainingVal ? focus : null
+      const suggestions: string[] = Array.isArray(pending.suggestions)
+        ? pending.suggestions
+        : []
+      const foods: string[] = Array.isArray(meal.foods) ? meal.foods : []
+      for (const food of foods) {
+        const fw = new Set(foodWords(food))
+        if (fw.size === 0) continue
+        for (const sug of suggestions) {
+          const sw = foodWords(sug)
+          if (sw.length === 0) continue
+          const swSet = new Set(sw)
+          // Match either way: "beef stew" vs "a bowl of beef stew".
+          if (sw.every((w) => fw.has(w)) || [...fw].every((w) => swSet.has(w))) {
+            return `Nice — you had the ${food}.`
+          }
+        }
+      }
+      return null
     } catch {
       return null
     }
@@ -463,16 +484,16 @@ export default function Home() {
       const res = await fetch(`/api/coach/next?${params.toString()}`)
       const json = await res.json()
       if (json?.tip) {
-        // Remember this suggestion; the NEXT logged meal gets checked against it.
+        // Remember the suggested foods; the NEXT logged meal gets checked
+        // against them. Suggestions expire with the next meal either way.
         try {
-          if (["protein", "carbs", "fat"].includes(json.tip.focus)) {
+          const sug = Array.isArray(json.tip.suggestions)
+            ? json.tip.suggestions.filter(Boolean)
+            : []
+          if (sug.length > 0) {
             localStorage.setItem(
               PENDING_SUGGESTION_KEY,
-              JSON.stringify({
-                focus: json.tip.focus,
-                remaining: json.remaining || {},
-                at: Date.now(),
-              })
+              JSON.stringify({ suggestions: sug.slice(0, 3), at: Date.now() })
             )
           }
         } catch {}
