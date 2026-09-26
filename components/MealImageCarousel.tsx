@@ -1,15 +1,12 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 
 type Props = {
   images: string[]
   index: number
   onChange: (i: number) => void
-  /** Optional: fetch a fresh set of candidates ("none of these match") */
-  onRefresh?: () => void
-  refreshing?: boolean
   /** Sizing classes for the carousel frame, e.g. "h-[260px]" */
   className?: string
   alt?: string
@@ -35,8 +32,6 @@ export default function MealImageCarousel({
   images,
   index,
   onChange,
-  onRefresh,
-  refreshing = false,
   className = "h-[260px]",
   alt = "Meal photo",
 }: Props) {
@@ -240,18 +235,6 @@ export default function MealImageCarousel({
         </>
       )}
 
-      {/* REFRESH CANDIDATES */}
-      {onRefresh && (
-        <button
-          aria-label="Load different photos"
-          title="None of these match? Load more photos"
-          onClick={onRefresh}
-          disabled={refreshing}
-          className="absolute bottom-3 right-3 z-[5] w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink transition-all duration-150 hover:bg-black/60 active:scale-90 disabled:opacity-60"
-        >
-          <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
-        </button>
-      )}
     </div>
   )
 }

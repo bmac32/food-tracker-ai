@@ -8,8 +8,6 @@ type Props = {
   images: string[]
   imageIndex: number
   onImageChange: (i: number) => void
-  onRefreshImages?: () => void
-  refreshingImages?: boolean
   analysis: any
   note: string
   setNote: (v: string) => void
@@ -24,8 +22,6 @@ export default function MealReviewCard({
   images,
   imageIndex,
   onImageChange,
-  onRefreshImages,
-  refreshingImages = false,
   analysis,
   note,
   setNote,
@@ -90,8 +86,6 @@ export default function MealReviewCard({
           }
           index={imageIndex}
           onChange={onImageChange}
-          onRefresh={onRefreshImages}
-          refreshing={refreshingImages}
           className="h-[340px]"
           alt={analysis.meal_name || "Meal photo"}
         />
