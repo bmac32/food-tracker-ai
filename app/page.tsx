@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabase"
-import { getSmartFoodImages } from "@/lib/getSmartFoodImage"
+import { getSmartFoodImages, fallbackSet } from "@/lib/getSmartFoodImage"
 import { dishKey } from "@/lib/photoLearning"
 
 import { Sparkles, Dumbbell, Refrigerator, Apple } from "lucide-react"
@@ -396,7 +396,17 @@ export default function Home() {
       analysis.foods
     )
     const next = photoUrls.filter((_, i) => i !== index)
-    setPhotoUrls(next)
+    if (next.length === 0) {
+      // Never strand her with no photo (the card would unmount and eat the
+      // whole review). Refill with curated fallbacks for this dish.
+      const gone = new Set(photoUrls)
+      const fb = fallbackSet(analysis.meal_name || "meal").filter(
+        (u) => !gone.has(u)
+      )
+      setPhotoUrls(fb.length > 0 ? fb : fallbackSet("meal"))
+    } else {
+      setPhotoUrls(next)
+    }
     setPhotoIndex(0)
   }
 

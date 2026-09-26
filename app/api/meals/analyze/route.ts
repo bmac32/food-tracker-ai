@@ -127,7 +127,7 @@ const JSON_INSTRUCTION = `Return ONLY valid JSON, no markdown fences:
 {
  "meal_name": "",
  "foods": [{"item": "plain food name, no quantities", "grams": number, "protein": number, "carbs": number, "fat": number}],
- "image_query": "3-6 word stock-photo search describing this dish as plated, e.g. 'fluffy scrambled eggs on toast'"
+ "image_query": "3-6 word stock-photo search describing this dish as plated, e.g. 'fluffy scrambled eggs on toast'. If the meal is several separate items rather than one cooked dish (snack plate, crackers with dips, etc.), describe it as a plate, e.g. 'hummus cheese crackers snack plate'"
 }`
 
 /**

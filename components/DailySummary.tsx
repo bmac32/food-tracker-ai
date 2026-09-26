@@ -265,7 +265,10 @@ export default function DailySummary(props: Props) {
   // -------------------------
   // TOTALS
   // -------------------------
- const totals = meals.reduce(
+  // Round to 1 decimal: summing 1-decimal per-meal floats otherwise
+  // produces artifacts like 83.60000000000001 in the UI.
+  const r1 = (n: number) => Math.round(n * 10) / 10
+  const rawTotals = meals.reduce(
   (acc: { calories: number; protein: number; carbs: number; fat: number }, meal) => {
     const ai =
       typeof meal.ai_analysis === "string"
@@ -280,6 +283,12 @@ export default function DailySummary(props: Props) {
   },
   { calories: 0, protein: 0, carbs: 0, fat: 0 }
 )
+const totals = {
+  calories: Math.round(rawTotals.calories),
+  protein: r1(rawTotals.protein),
+  carbs: r1(rawTotals.carbs),
+  fat: r1(rawTotals.fat),
+}
 
   const caloriesBurned = workouts.reduce(
     (sum, w) => sum + (Number(w.calories_burned) || 0),
