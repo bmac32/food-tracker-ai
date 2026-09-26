@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ThumbsDown, ChevronDown } from "lucide-react"
+import { ThumbsDown } from "lucide-react"
+import PortionBalance from "./PortionBalance"
 import MealImageCarousel from "./MealImageCarousel"
 import { fallbackSet } from "@/lib/getSmartFoodImage"
 
@@ -16,23 +17,7 @@ type FoodItem = {
   per100: { protein: number; carbs: number; fat: number } | null
 }
 
-// Muted editorial segment colors for the share bar.
-const SEGMENT_COLORS = [
-  "#c98f4e",
-  "#7ba05b",
-  "#5b8dc9",
-  "#c96a5b",
-  "#9b7fc9",
-  "#5bc9b0",
-  "#c95b85",
-  "#7f8dc9",
-]
-
-type ShareMode = "calories" | "protein" | "carbs" | "fat"
-const SHARE_MODES: ShareMode[] = ["calories", "protein", "carbs", "fat"]
-
 const r1 = (n: number) => Math.round(n * 10) / 10
-const calsOf = (p: number, c: number, f: number) => p * 4 + c * 4 + f * 9
 
 function toFoodItems(analysis: any): FoodItem[] {
   if (Array.isArray(analysis?.food_items) && analysis.food_items.length > 0) {
@@ -107,8 +92,6 @@ export default function MealReviewCard({
 }: Props) {
   const [items, setItems] = useState<FoodItem[]>(() => toFoodItems(analysis))
   const [newFood, setNewFood] = useState("")
-  const [showBalance, setShowBalance] = useState(false)
-  const [shareMode, setShareMode] = useState<ShareMode>("calories")
 
   // Portion data only exists on fresh analyses (with food_items).
   const hasPortions = items.some((i) => i.grams > 0 || i.per100)
@@ -116,8 +99,6 @@ export default function MealReviewCard({
   // keep items in sync if analysis changes
   useEffect(() => {
     setItems(toFoodItems(analysis))
-    setShowBalance(false)
-    setShareMode("calories")
   }, [analysis])
 
   if (!analysis) return null
@@ -130,15 +111,6 @@ export default function MealReviewCard({
         fat: analysis.fat,
         calories: analysis.calories,
       }
-
-  // Share of the meal each ingredient accounts for, in the selected mode.
-  const shareValues = items.map((it) =>
-    shareMode === "calories" ? calsOf(it.protein, it.carbs, it.fat) : it[shareMode]
-  )
-  const shareTotal = shareValues.reduce((s, v) => s + v, 0)
-  const shares = shareValues.map((v) =>
-    shareTotal > 0 ? Math.round((v / shareTotal) * 100) : 0
-  )
 
   const handleRemove = (index: number) => {
     setItems((prev) => prev.filter((_, i) => i !== index))
@@ -264,81 +236,7 @@ export default function MealReviewCard({
           {/* PORTION BALANCE — hidden until asked for. Inform, don't instruct:
               the share bar lets the "huh, my portions are off" moment happen
               on its own. No steppers, no judgment. */}
-          {hasPortions && (
-            <button
-              onClick={() => setShowBalance((v) => !v)}
-              className="w-full mt-3 flex items-center justify-between bg-surface-2 rounded-xl px-3 py-2.5 text-xs text-ink transition-all duration-150 ease-spring hover:bg-white/10 active:scale-[0.99]"
-            >
-              <span>
-                {showBalance ? "My portions" : "View my portions"}
-              </span>
-              <ChevronDown
-                size={14}
-                className={`text-ink-faint transition-transform duration-200 ${
-                  showBalance ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-          )}
-
-          {hasPortions && showBalance && (
-            <div className="mt-2 animate-fade-in">
-              {/* mode toggle */}
-              <div className="flex bg-surface-2 rounded-full p-0.5 text-[11px] mb-2">
-                {SHARE_MODES.map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setShareMode(mode)}
-                    className={`flex-1 px-1 py-0.5 rounded-full capitalize transition-all duration-150 active:scale-95 ${
-                      shareMode === mode
-                        ? "bg-ground text-ink"
-                        : "text-ink-faint hover:text-ink"
-                    }`}
-                  >
-                    {mode}
-                  </button>
-                ))}
-              </div>
-
-              {/* stacked share bar */}
-              <div className="flex h-2.5 rounded-full overflow-hidden bg-surface-2 mb-1">
-                {items.map((it, i) =>
-                  shares[i] > 0 ? (
-                    <div
-                      key={i}
-                      className="h-full transition-all duration-300"
-                      style={{
-                        width: `${shares[i]}%`,
-                        backgroundColor:
-                          SEGMENT_COLORS[i % SEGMENT_COLORS.length],
-                      }}
-                    />
-                  ) : null
-                )}
-              </div>
-
-              {/* per-ingredient shares */}
-              <div className="divide-y divide-hair/50">
-                {items.map((it, i) => (
-                  <div key={i} className="flex items-center gap-2 py-1.5">
-                    <span
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{
-                        backgroundColor:
-                          SEGMENT_COLORS[i % SEGMENT_COLORS.length],
-                      }}
-                    />
-                    <span className="flex-1 truncate text-xs text-ink">
-                      {it.item}
-                    </span>
-                    <span className="text-[11px] text-ink-faint tabular-nums shrink-0">
-                      {shares[i]}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <PortionBalance items={hasPortions ? items : []} className="mt-3" />
 
           <div className="flex gap-2 mt-3">
             <input
