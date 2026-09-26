@@ -97,6 +97,9 @@ async function learnedUrls(
     for (const row of data) {
       const url = String(row.photo_url || "").trim()
       if (!url || seen.has(url) || isExcluded(url, exclude)) continue
+      // Her own uploaded meal photos are ground truth for that meal, never
+      // candidates for another — skip even if recorded before this guard.
+      if (url.includes("/meal-photos/")) continue
 
       const exact = dish && row.dish_key === dish
       const rowWords = significantWords(
