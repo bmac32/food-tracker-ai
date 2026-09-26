@@ -1,41 +1,25 @@
 import { WORKOUT_META_BY_TYPE, type WorkoutType } from "./workoutMeta"
 
+/**
+ * Workout imagery — goes through our own /api/food-image proxy so the
+ * Unsplash access key stays server-side (see app/api/food-image/route.ts).
+ * The old NEXT_PUBLIC_UNSPLASH_ACCESS_KEY env var is no longer used;
+ * set server-only UNSPLASH_ACCESS_KEY instead.
+ */
 export async function getWorkoutImage(type: WorkoutType): Promise<string> {
   try {
-    const accessKey = process.env.NEXT_PUBLIC_UNSPLASH_ACCESS_KEY
-
-    if (!accessKey) {
-      console.error("Missing Unsplash key")
-      return fallbackImage()
-    }
-
     const query = WORKOUT_META_BY_TYPE[type]?.imageQuery || "workout fitness"
 
     const res = await fetch(
-      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(
+      `/api/food-image?q=${encodeURIComponent(
         query
-      )}&per_page=6&orientation=landscape`,
-      {
-        headers: {
-          Authorization: `Client-ID ${accessKey}`,
-        },
-      }
+      )}&orientation=landscape`
     )
 
+    if (!res.ok) return fallbackImage()
+
     const data = await res.json()
-
-    if (!data.results || data.results.length === 0) {
-      return fallbackImage()
-    }
-
-    // Skip any sponsored/promoted results and pick from the rest of the
-    // top few so it's not always the very first hit.
-    const organic = data.results.filter((r: any) => !r.sponsorship)
-    const pool = organic.length > 0 ? organic : data.results
-
-    const pick = pool[Math.floor(Math.random() * pool.length)]
-
-    return pick.urls.regular
+    return data.url || fallbackImage()
   } catch (err) {
     console.error("Unsplash workout image failed", err)
     return fallbackImage()

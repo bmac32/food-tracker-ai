@@ -1,12 +1,23 @@
+/**
+ * Food photo lookup — goes through our own /api/food-image proxy so the
+ * Unsplash access key stays server-side (see app/api/food-image/route.ts).
+ * The old NEXT_PUBLIC_UNSPLASH_ACCESS_KEY env var is no longer used;
+ * set server-only UNSPLASH_ACCESS_KEY instead.
+ */
 export async function getSmartFoodImage(mealName: string, foods?: string[]) {
+  const urls = await getSmartFoodImages(mealName, foods)
+  return urls[0] || fallbackImage()
+}
+
+/**
+ * Returns up to 6 candidate photo URLs so the UI can offer a swipeable
+ * picker when the first pick doesn't match the meal.
+ */
+export async function getSmartFoodImages(
+  mealName: string,
+  foods?: string[]
+): Promise<string[]> {
   try {
-    const accessKey = process.env.NEXT_PUBLIC_UNSPLASH_ACCESS_KEY
-
-    if (!accessKey) {
-      console.error("Missing Unsplash key")
-      return fallbackImage()
-    }
-
     const queryParts = foods?.length
       ? foods.slice(0, 3)
       : mealName.split(" ").slice(0, 3)
@@ -14,29 +25,20 @@ export async function getSmartFoodImage(mealName: string, foods?: string[]) {
     const query = queryParts.join(" ")
 
     const res = await fetch(
-      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(
-        query + " food"
-      )}&per_page=10&orientation=squarish`,
-      {
-        headers: {
-          Authorization: `Client-ID ${accessKey}`,
-        },
-      }
+      `/api/food-image?q=${encodeURIComponent(query + " food")}`
     )
 
+    if (!res.ok) return [fallbackImage()]
+
     const data = await res.json()
-
-    if (!data.results || data.results.length === 0) {
-      return fallbackImage()
-    }
-
-    const random =
-      data.results[Math.floor(Math.random() * data.results.length)]
-
-    return random.urls.regular
+    const urls = Array.isArray(data.urls)
+      ? data.urls.filter((u: any) => typeof u === "string")
+      : []
+    if (data.url && !urls.includes(data.url)) urls.unshift(data.url)
+    return urls.length > 0 ? urls : [fallbackImage()]
   } catch (err) {
-    console.error("Unsplash failed", err)
-    return fallbackImage()
+    console.error("Food image lookup failed", err)
+    return [fallbackImage()]
   }
 }
 

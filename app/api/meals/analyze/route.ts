@@ -1,11 +1,80 @@
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
+import { getRouteUser } from "@/lib/supabaseServer"
 
-const CLAUDE = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-})
+/**
+ * POST /api/meals/analyze
+ * Authenticated. Analyzes a meal from text or a photo URL.
+ *
+ * Cost design (deliberately cheap):
+ *  - Text mode: 1 cheap Claude call.
+ *  - Photo mode: 1 Gemini Flash call (structured JSON, single pass),
+ *    falling back to 1 cheap Claude vision call.
+ *  - No fake data: if every pass fails, returns an honest 500 error.
+ *
+ * Model names are env-configurable — verify the exact model IDs in your
+ * provider dashboards, because wrong IDs 404 and names change often.
+ *
+ * API clients are created lazily per-request so a missing env var fails
+ * the request (with a clear error) instead of crashing the route module
+ * at import/build time.
+ */
+function getAnthropic() {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured")
+  return new Anthropic({ apiKey })
+}
 
-// 🔥 CLEAN + NORMALIZE FOODS
+const TEXT_MODEL = process.env.AI_TEXT_MODEL ?? "claude-haiku-4-5"
+const VISION_FALLBACK_MODEL =
+  process.env.AI_VISION_FALLBACK_MODEL ?? "claude-haiku-4-5"
+const PHOTO_MODEL = process.env.AI_PHOTO_MODEL ?? "gemini-1.5-flash"
+const GOOGLE_KEY = process.env.GOOGLE_AI_API_KEY
+
+// ---------------------------------------------------------------------------
+// Per-user rate limit: protects the AI quota from runaway clients.
+// (In-memory — good enough for a single-instance/small deployment.)
+// ---------------------------------------------------------------------------
+const RATE_LIMIT = 30 // analyses per window
+const WINDOW_MS = 60 * 60 * 1000 // 1 hour
+const hits = new Map<string, { count: number; resetAt: number }>()
+
+function isRateLimited(userId: string): boolean {
+  const now = Date.now()
+  const entry = hits.get(userId)
+
+  if (!entry || now > entry.resetAt) {
+    hits.set(userId, { count: 1, resetAt: now + WINDOW_MS })
+    return false
+  }
+
+  entry.count += 1
+  return entry.count > RATE_LIMIT
+}
+
+// ---------------------------------------------------------------------------
+// imageUrl validation — the route fetches this URL server-side, so lock it
+// down: https only, and only from this app's own Supabase storage host.
+// This blocks SSRF probes against internal services.
+// ---------------------------------------------------------------------------
+function isAllowedImageUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw)
+    if (u.protocol !== "https:") return false
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    if (supabaseUrl) {
+      return u.hostname === new URL(supabaseUrl).hostname
+    }
+    return true // https-only fallback if env is missing
+  } catch {
+    return false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 function cleanFoods(foods: string[]): string[] {
   const GENERIC = ["protein", "vegetables", "grain", "food", "meal"]
 
@@ -20,7 +89,6 @@ function cleanFoods(foods: string[]): string[] {
     .slice(0, 5)
 }
 
-// 🔥 PICK PRIMARY FOOD (for better images)
 function getPrimaryFood(foods: string[]) {
   if (!foods.length) return "food"
 
@@ -45,30 +113,16 @@ function getPrimaryFood(foods: string[]) {
   return foods[0]
 }
 
-export async function POST(req: Request) {
-  try {
-    const { imageUrl, text } = await req.json()
+/** Extract a JSON object from an LLM response that may include fences. */
+function extractJson(text: string): any {
+  const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim()
+  const start = cleaned.indexOf("{")
+  const end = cleaned.lastIndexOf("}")
+  if (start === -1 || end === -1) throw new Error("No JSON object found")
+  return JSON.parse(cleaned.slice(start, end + 1))
+}
 
-    // -------------------------
-    // 🔥 TEXT MODE
-    // -------------------------
-    if (text) {
-      try {
-        const res = await CLAUDE.messages.create({
-          model: "claude-opus-4-6",
-          max_tokens: 300,
-          messages: [
-            {
-              role: "user",
-              content: `
-You are a nutrition expert.
-
-A user described their meal as:
-"${text}"
-
-Infer realistic ingredients and portion sizes.
-
-Return ONLY JSON:
+const JSON_INSTRUCTION = `Return ONLY valid JSON, no markdown fences:
 {
  "meal_name": "",
  "foods": ["specific foods only"],
@@ -76,277 +130,191 @@ Return ONLY JSON:
  "carbs": number,
  "fat": number,
  "calories": number
+}`
+
+function finalize(raw: any, fallbackFoods: string[] = []) {
+  const foods = cleanFoods(raw?.foods?.length ? raw.foods : fallbackFoods)
+  return {
+    meal_name: raw?.meal_name || "Meal",
+    foods,
+    primary_food: getPrimaryFood(foods),
+    protein: Number(raw?.protein) || 0,
+    carbs: Number(raw?.carbs) || 0,
+    fat: Number(raw?.fat) || 0,
+    calories: Number(raw?.calories) || 0,
+  }
 }
-`,
+
+// ---------------------------------------------------------------------------
+// Text mode — 1 cheap call
+// ---------------------------------------------------------------------------
+async function analyzeText(text: string) {
+  const res = await getAnthropic().messages.create({
+    model: TEXT_MODEL,
+    max_tokens: 300,
+    messages: [
+      {
+        role: "user",
+        content: `You are a nutrition expert. A user described their meal as: "${text}". Infer realistic ingredients and portion sizes.\n\n${JSON_INSTRUCTION}`,
+      },
+    ],
+  })
+
+  const content = res.content[0]
+  const responseText = content?.type === "text" ? content.text : ""
+  return finalize(extractJson(responseText))
+}
+
+// ---------------------------------------------------------------------------
+// Photo mode — Gemini Flash single structured pass (cheap)
+// ---------------------------------------------------------------------------
+async function analyzePhotoWithGemini(base64Image: string) {
+  if (!GOOGLE_KEY) throw new Error("GOOGLE_AI_API_KEY not configured")
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1/models/${PHOTO_MODEL}:generateContent?key=${GOOGLE_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: `You are a nutrition expert. Look at this meal photo. Identify every visible food with realistic portion sizes, then estimate macros.\n\n${JSON_INSTRUCTION}`,
+              },
+              {
+                // NOTE: the Gemini REST field is camelCase `inlineData`
+                // (snake_case `inline_data` silently fails).
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: base64Image,
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    }
+  )
+
+  if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`)
+
+  const data = await res.json()
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ""
+  if (!text) throw new Error("Gemini returned no text")
+
+  return finalize(extractJson(text))
+}
+
+// ---------------------------------------------------------------------------
+// Photo fallback — 1 cheap Claude vision call (single structured pass)
+// ---------------------------------------------------------------------------
+async function analyzePhotoWithClaude(base64Image: string) {
+  const res = await getAnthropic().messages.create({
+    model: VISION_FALLBACK_MODEL,
+    max_tokens: 400,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/jpeg",
+              data: base64Image,
             },
-          ],
-        })
+          },
+          {
+            type: "text",
+            text: `You are a nutrition expert. Look at this meal photo. Identify every visible food with realistic portion sizes, then estimate macros.\n\n${JSON_INSTRUCTION}`,
+          },
+        ],
+      },
+    ],
+  })
 
-        let responseText =
-          res.content[0]?.type === "text"
-            ? res.content[0].text
-            : ""
+  const content = res.content[0]
+  const text = content?.type === "text" ? content.text : ""
+  return finalize(extractJson(text))
+}
 
-        responseText = responseText
-          .replace(/```json/g, "")
-          .replace(/```/g, "")
-          .trim()
+// ---------------------------------------------------------------------------
+// Route
+// ---------------------------------------------------------------------------
+export async function POST(req: Request) {
+  const { user, response } = await getRouteUser()
+  if (!user) return response
 
-        const start = responseText.indexOf("{")
-        const end = responseText.lastIndexOf("}")
+  if (isRateLimited(user.id)) {
+    return NextResponse.json(
+      { error: "Too many analyses — please try again in a bit." },
+      { status: 429 }
+    )
+  }
 
-        let final = JSON.parse(responseText.slice(start, end + 1))
+  try {
+    const { imageUrl, text } = await req.json()
 
-        // ✅ CLEAN + ENHANCE
-        final.foods = cleanFoods(final.foods || [])
-        final.primary_food = getPrimaryFood(final.foods)
-
-        return NextResponse.json(final)
-
+    // ---------------- TEXT MODE ----------------
+    if (text) {
+      try {
+        return NextResponse.json(await analyzeText(String(text)))
       } catch (err) {
         console.error("TEXT MODE FAILED:", err)
+        return NextResponse.json(
+          { error: "AI analysis failed — please try again." },
+          { status: 500 }
+        )
       }
     }
 
-    // -------------------------
-    // 🖼 IMAGE MODE
-    // -------------------------
-
-    if (!imageUrl) {
+    // ---------------- PHOTO MODE ----------------
+    if (!imageUrl || !isAllowedImageUrl(String(imageUrl))) {
       return NextResponse.json(
-        { error: "No image or text provided" },
+        { error: "A valid meal photo is required." },
         { status: 400 }
       )
     }
 
-    const imageResponse = await fetch(imageUrl)
-    const buffer = await imageResponse.arrayBuffer()
-    const base64Image = Buffer.from(buffer).toString("base64")
-
-    // -------------------------
-    // GEMINI (FAST PASS)
-    // -------------------------
-
-    let foodsArray: string[] = []
-
+    let base64Image: string
     try {
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GOOGLE_AI_API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: "List the EXACT foods visible. No categories. Comma separated only.",
-                  },
-                  {
-                    inline_data: {
-                      mime_type: "image/jpeg",
-                      data: base64Image,
-                    },
-                  },
-                ],
-              },
-            ],
-          }),
-        }
+      const imageResponse = await fetch(imageUrl)
+      if (!imageResponse.ok) throw new Error(`Image fetch ${imageResponse.status}`)
+      base64Image = Buffer.from(await imageResponse.arrayBuffer()).toString("base64")
+    } catch (err) {
+      console.error("IMAGE FETCH FAILED:", err)
+      return NextResponse.json(
+        { error: "Couldn't load the photo — please try again." },
+        { status: 500 }
       )
-
-      const geminiData = await geminiRes.json()
-
-      const rawText =
-        geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || ""
-
-      foodsArray = rawText
-        .toLowerCase()
-        .replace(/\n/g, ",")
-        .replace(/\./g, "")
-        .split(",")
-        .map((f: string) => f.trim())
-        .filter((f: string) => f.length > 2)
-
-    } catch (e) {
-      console.error("GEMINI FAILED", e)
     }
 
-    // -------------------------
-    // CLAUDE VISION FALLBACK
-    // -------------------------
-
-    if (!foodsArray.length) {
-      try {
-        const res = await CLAUDE.messages.create({
-          model: "claude-opus-4-6",
-          max_tokens: 200,
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image",
-                  source: {
-                    type: "base64",
-                    media_type: "image/jpeg",
-                    data: base64Image,
-                  },
-                },
-                {
-                  type: "text",
-                  text: "List the EXACT foods visible. No categories. Comma separated only.",
-                },
-              ],
-            },
-          ],
-        })
-
-        const text =
-          res.content[0]?.type === "text"
-            ? res.content[0].text
-            : ""
-
-        foodsArray = text
-          .toLowerCase()
-          .split(",")
-          .map((f: string) => f.trim())
-          .filter((f: string) => f.length > 2)
-
-      } catch (e) {
-        console.error("CLAUDE VISION FAILED", e)
-      }
-    }
-
-    // -------------------------
-    // CLEAN FOODS
-    // -------------------------
-
-    foodsArray = cleanFoods(foodsArray)
-
-    // -------------------------
-    // DESCRIPTION
-    // -------------------------
-
-    let descriptionText = foodsArray.join(", ")
-
+    // Pass 1: cheap Gemini structured pass
     try {
-      const res = await CLAUDE.messages.create({
-        model: "claude-opus-4-6",
-        max_tokens: 300,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: "image/jpeg",
-                  data: base64Image,
-                },
-              },
-              {
-                type: "text",
-                text: "Describe this meal in detail. List all visible foods specifically.",
-              },
-            ],
-          },
-        ],
-      })
-
-      descriptionText =
-        res.content[0]?.type === "text"
-          ? res.content[0].text
-          : descriptionText
-
-    } catch (e) {
-      console.error("DESCRIPTION FAILED", e)
+      return NextResponse.json(await analyzePhotoWithGemini(base64Image))
+    } catch (err) {
+      console.error("GEMINI PHOTO FAILED:", err)
     }
 
-    // -------------------------
-    // STRUCTURE
-    // -------------------------
-
-    let final = null
-
+    // Pass 2: cheap Claude vision fallback
     try {
-      const res = await CLAUDE.messages.create({
-        model: "claude-opus-4-6",
-        max_tokens: 300,
-        messages: [
-          {
-            role: "user",
-            content: `
-Given this meal:
-
-${descriptionText}
-
-Return ONLY JSON:
-{
- "meal_name": "",
- "foods": [],
- "protein": number,
- "carbs": number,
- "fat": number,
- "calories": number
-}
-`,
-          },
-        ],
-      })
-
-      let text =
-        res.content[0]?.type === "text"
-          ? res.content[0].text
-          : ""
-
-      text = text.replace(/```json/g, "").replace(/```/g, "").trim()
-
-      const start = text.indexOf("{")
-      const end = text.lastIndexOf("}")
-
-      final = JSON.parse(text.slice(start, end + 1))
-
-      // ✅ CLEAN + ENHANCE
-      final.foods = cleanFoods(final.foods || foodsArray)
-      final.primary_food = getPrimaryFood(final.foods)
-
-    } catch (e) {
-      console.error("STRUCTURE FAILED", e)
+      return NextResponse.json(await analyzePhotoWithClaude(base64Image))
+    } catch (err) {
+      console.error("CLAUDE VISION FAILED:", err)
     }
 
-    // -------------------------
-    // FINAL FALLBACK
-    // -------------------------
-
-    if (!final) {
-      const fallbackFoods = cleanFoods(foodsArray)
-
-      final = {
-        meal_name: "Meal",
-        foods: fallbackFoods.length ? fallbackFoods : ["meal"],
-        primary_food: getPrimaryFood(fallbackFoods),
-        protein: 30,
-        carbs: 40,
-        fat: 15,
-        calories: 400,
-      }
-    }
-
-    return NextResponse.json(final)
-
+    // No fake data — ever. An honest error beats invented macros.
+    return NextResponse.json(
+      { error: "AI analysis failed — please try again." },
+      { status: 500 }
+    )
   } catch (error) {
-    console.error("🚨 FULL PIPELINE ERROR:", error)
-
-    return NextResponse.json({
-      meal_name: "Meal",
-      foods: ["meal"],
-      primary_food: "meal",
-      protein: 30,
-      carbs: 40,
-      fat: 15,
-      calories: 400,
-    })
+    console.error("ANALYZE ROUTE ERROR:", error)
+    return NextResponse.json(
+      { error: "AI analysis failed — please try again." },
+      { status: 500 }
+    )
   }
 }

@@ -1,9 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import MealImageCarousel from "./MealImageCarousel"
 
 type Props = {
-  imageUrl: string
+  images: string[]
+  imageIndex: number
+  onImageChange: (i: number) => void
+  onRefreshImages?: () => void
+  refreshingImages?: boolean
   analysis: any
   note: string
   setNote: (v: string) => void
@@ -15,7 +20,11 @@ type Props = {
 }
 
 export default function MealReviewCard({
-  imageUrl,
+  images,
+  imageIndex,
+  onImageChange,
+  onRefreshImages,
+  refreshingImages = false,
   analysis,
   note,
   setNote,
@@ -27,7 +36,6 @@ export default function MealReviewCard({
 }: Props) {
   const [foods, setFoods] = useState<string[]>(analysis?.foods || [])
   const [newFood, setNewFood] = useState("")
-  const [imgLoaded, setImgLoaded] = useState(false)
 
   // keep foods in sync if analysis changes
   useEffect(() => {
@@ -52,9 +60,6 @@ export default function MealReviewCard({
     await onSave()
   }
 
-  const fallback =
-    "https://source.unsplash.com/800x600/?food"
-
   return (
     <div
       className={`
@@ -65,7 +70,7 @@ export default function MealReviewCard({
       `}
     >
 
-      {/* IMAGE */}
+      {/* IMAGE — swipeable candidates so a wrong auto-pick can be swapped */}
       <div className="relative">
 
         {/* CANCEL PREVIEW */}
@@ -76,39 +81,30 @@ export default function MealReviewCard({
           ✕
         </button>
 
-  {/* shimmer (only briefly) */}
-  {!imgLoaded && (
-    <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-surface via-surface-2 to-surface" />
-  )}
+        <MealImageCarousel
+          images={
+            images.length > 0
+              ? images
+              : ["https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"]
+          }
+          index={imageIndex}
+          onChange={onImageChange}
+          onRefresh={onRefreshImages}
+          refreshing={refreshingImages}
+          className="h-[340px]"
+          alt={analysis.meal_name || "Meal photo"}
+        />
 
-  <img
-    src={
-      imageUrl ||
-      "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
-    }
-    onLoad={() => setImgLoaded(true)}
-    onError={(e) => {
-      e.currentTarget.src =
-        "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
-      setImgLoaded(true) // 🔥 CRITICAL FIX
-    }}
-    className={`
-      w-full h-[340px] object-cover
-      transition-opacity duration-500
-      ${imgLoaded ? "opacity-100" : "opacity-100"}
-    `}
-  />
+        {/* gradient — pointer-events-none so swipes pass through to the carousel */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
 
-  {/* gradient */}
-  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-
-  {/* title */}
-  <div className="absolute bottom-3 left-4 right-4">
-    <h2 className="text-ink text-lg font-bold tracking-tight">
-      {analysis.meal_name}
-    </h2>
-  </div>
-</div>
+        {/* title */}
+        <div className="absolute bottom-3 left-4 right-4 pointer-events-none">
+          <h2 className="text-ink text-lg font-bold tracking-tight">
+            {analysis.meal_name}
+          </h2>
+        </div>
+      </div>
 
       {/* CONTENT */}
       <div className="p-4 space-y-4">

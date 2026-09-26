@@ -3,14 +3,16 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabase"
-import { getSmartFoodImage } from "@/lib/getSmartFoodImage"
+import { getSmartFoodImages } from "@/lib/getSmartFoodImage"
 
-import { Sparkles, Dumbbell } from "lucide-react"
+import { Sparkles, Dumbbell, Refrigerator, Trophy } from "lucide-react"
 
 import Upload from "@/components/Upload"
 import DailySummary from "@/components/DailySummary"
 import MealFeed from "@/components/MealFeed"
 import MealReviewCard from "@/components/MealReviewCard"
+import FridgeSuggest, { FridgeSuggestion } from "@/components/FridgeSuggest"
+import CoachReview from "@/components/CoachReview"
 import UserInfo from "@/components/UserInfo"
 import WorkoutLogger from "@/components/WorkoutLogger"
 
@@ -23,32 +25,19 @@ type Analysis = {
   fat: number | string
 }
 
-// 🔥 Prompt helper (unchanged)
-const improvePrompt = (text: string) => {
-  const lower = text.toLowerCase()
-
-  if (lower.includes("celery") && lower.includes("ranch")) {
-    return "celery sticks with ranch dip"
-  }
-
-  if (lower.includes("cheese") && lower.includes("cracker")) {
-    return "cheese and crackers"
-  }
-
-  if (lower.includes("oatmeal") || lower.includes("oats")) {
-    return "oatmeal bowl"
-  }
-
-  return text
-}
-
 export default function Home() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   
   const [note, setNote] = useState("")
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  // Swipeable photo candidates (auto-picked stock photos). The selected
+  // index is what gets saved as photo_url; the full pool is saved as
+  // photo_candidates so the feed can offer the same picker later.
+  const [photoUrls, setPhotoUrls] = useState<string[]>([])
+  const [photoIndex, setPhotoIndex] = useState(0)
+  const [refreshingPhotos, setRefreshingPhotos] = useState(false)
+  const photoUrl = photoUrls[photoIndex] ?? null
   const [analyzing, setAnalyzing] = useState(false)
 
   const [refreshFeed, setRefreshFeed] = useState(0)
@@ -58,11 +47,17 @@ export default function Home() {
   const [textInputMode, setTextInputMode] = useState(false)
   const [mealText, setMealText] = useState("")
 
+  // Honest error state: shown when AI analysis fails instead of
+  // inventing nutrition data.
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+
   const [isSaving, setIsSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [scrollProgress, setScrollProgress] = useState(0)
   const [workoutLoggerOpen, setWorkoutLoggerOpen] = useState(false)
   const [mealChooserOpen, setMealChooserOpen] = useState(false)
+  const [fridgeOpen, setFridgeOpen] = useState(false)
+  const [coachOpen, setCoachOpen] = useState(false)
 
   // Continuous 0→1 scroll progress (not a hard threshold) so the header
   // collapses in lockstep with the scroll, like iOS's large-title behavior,
@@ -112,6 +107,7 @@ export default function Home() {
   const uploadAndAnalyze = async (file: File) => {
     setAnalyzing(true)
     setAnalysis(null)
+    setAnalysisError(null)
 
     try {
       const fileName = `${Date.now()}-${file.name}`
@@ -130,7 +126,9 @@ export default function Home() {
         .getPublicUrl(fileName)
 
       const url = publicData?.publicUrl || ""
-      setPhotoUrl(url)
+      // User-uploaded photo: single candidate, no picker needed.
+      setPhotoUrls(url ? [url] : [])
+      setPhotoIndex(0)
 
       const res = await fetch("/api/meals/analyze", {
         method: "POST",
@@ -139,6 +137,12 @@ export default function Home() {
       })
 
       const data = await res.json()
+
+      // Honest failure: surface the error instead of showing fake macros.
+      if (!res.ok || data?.error) {
+        setAnalysisError(data?.error || "AI analysis failed — please try again.")
+        return
+      }
 
       const parsedAnalysis = {
         meal_name: data?.meal_name || "Meal",
@@ -170,6 +174,7 @@ export default function Home() {
 
     setAnalyzing(true)
     setTextInputMode(false)
+    setAnalysisError(null)
 
     try {
       const res = await fetch("/api/meals/analyze", {
@@ -179,6 +184,13 @@ export default function Home() {
       })
 
       const data = await res.json()
+
+      // Honest failure: surface the error instead of showing fake macros.
+      if (!res.ok || data?.error) {
+        setAnalysisError(data?.error || "AI analysis failed — please try again.")
+        setMealText("")
+        return
+      }
 
       const parsedAnalysis = {
         meal_name: data?.meal_name || mealText,
@@ -194,20 +206,69 @@ export default function Home() {
         fat: data?.fat ?? 5,
       }
 
-      // ✅ FIRST: get image
-      const imageUrl = await getSmartFoodImage(
+      // ✅ FIRST: get image candidates (swipeable picker)
+      const imageUrls = await getSmartFoodImages(
         parsedAnalysis.meal_name,
         parsedAnalysis.foods
       )
 
       // ✅ THEN: set both together
-      setPhotoUrl(imageUrl)
+      setPhotoUrls(imageUrls)
+      setPhotoIndex(0)
       setAnalysis(parsedAnalysis)
     } catch (err) {
       console.error(err)
     } finally {
       setAnalyzing(false)
       setMealText("")
+    }
+  }
+
+  // -------------------------
+  // 🔄 REFRESH PHOTO CANDIDATES ("none of these match")
+  // -------------------------
+  const refreshPhotoCandidates = async () => {
+    if (!analysis || refreshingPhotos) return
+    setRefreshingPhotos(true)
+    try {
+      const urls = await getSmartFoodImages(analysis.meal_name, analysis.foods)
+      setPhotoUrls(urls)
+      setPhotoIndex(0)
+    } catch (err) {
+      console.error("Photo refresh failed", err)
+    } finally {
+      setRefreshingPhotos(false)
+    }
+  }
+
+  // -------------------------
+  // 🧊 FRIDGE SUGGESTION → REVIEW FLOW
+  // A chosen fridge suggestion becomes a pending meal: it goes through
+  // the same review card (photo picker, editable ingredients) and the
+  // same save path as a text-logged meal.
+  // -------------------------
+  const logFridgeSuggestion = async (s: FridgeSuggestion) => {
+    setFridgeOpen(false)
+    setAnalyzing(true)
+    setAnalysisError(null)
+
+    try {
+      const urls = await getSmartFoodImages(s.name, s.uses)
+      setPhotoUrls(urls)
+      setPhotoIndex(0)
+      setAnalysis({
+        meal_name: s.name,
+        foods: s.uses.length > 0 ? s.uses : [s.name],
+        calories: s.calories,
+        protein: s.protein,
+        carbs: s.carbs,
+        fat: s.fat,
+      })
+    } catch (err) {
+      console.error("FRIDGE LOG FAILED:", err)
+      setAnalysisError("Couldn't prepare that suggestion — please try again.")
+    } finally {
+      setAnalyzing(false)
     }
   }
 
@@ -232,10 +293,13 @@ export default function Home() {
       photoUrl ||
       "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
 
+    const candidates = photoUrls.length > 0 ? photoUrls : [safePhoto]
+
     const optimisticMeal = {
       id: Date.now(),
       created_at: new Date().toISOString(),
       photo_url: safePhoto,
+      photo_candidates: candidates,
       ai_analysis: analysis,
       calories: toNumber(analysis.calories),
       protein: toNumber(analysis.protein),
@@ -251,6 +315,7 @@ export default function Home() {
         {
           user_id: user.id, // ✅ ADD THIS LINE
           photo_url: safePhoto,
+          photo_candidates: candidates,
           note: optimisticMeal.note,
           meal_type: "meal",
           ai_analysis: optimisticMeal.ai_analysis,
@@ -275,7 +340,8 @@ export default function Home() {
         setSaveSuccess(false)
         setIsSaving(false)
         setAnalysis(null)
-        setPhotoUrl(null)
+        setPhotoUrls([])
+        setPhotoIndex(0)
         setNote("")
 
         // ✅ CLEAR optimistic meals AFTER DB sync
@@ -310,9 +376,10 @@ export default function Home() {
         scrollProgress={scrollProgress}
       />
 
-    <main className="relative z-10 max-w-xl mx-auto p-6 space-y-6 min-h-screen">
+    <main className="relative z-10 max-w-xl mx-auto px-6 pt-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] space-y-6 min-h-screen">
 
       {!photoUrl && !analysis && (
+        <div className="space-y-3">
         <div className="flex gap-3">
           <button
             onClick={() => setMealChooserOpen(true)}
@@ -333,6 +400,17 @@ export default function Home() {
             </span>
             Log workout
           </button>
+        </div>
+
+        <button
+          onClick={() => setCoachOpen(true)}
+          className="group w-full flex items-center justify-center gap-2 bg-surface border border-hair rounded-2xl py-3 text-sm font-bold text-ink-dim transition-all duration-200 ease-spring hover:border-burn/40 hover:text-ink hover:bg-surface-2 active:scale-[0.98]"
+        >
+          <span className="w-5 h-5 rounded-full bg-gradient-to-br from-burn to-burn-2 flex items-center justify-center transition-transform duration-300 ease-spring group-active:scale-[1.15]">
+            <Trophy size={11} className="text-ground" />
+          </span>
+          Coach review — what am I missing?
+        </button>
         </div>
       )}
 
@@ -355,6 +433,24 @@ export default function Home() {
                 uploadAndAnalyze(file)
               }}
             />
+
+            <button
+              onClick={() => {
+                setMealChooserOpen(false)
+                setFridgeOpen(true)
+              }}
+              className="group w-full flex items-center gap-3 bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-carb/40 active:scale-[0.98]"
+            >
+              <span className="w-8 h-8 rounded-full bg-gradient-to-br from-carb to-protein flex items-center justify-center shrink-0 transition-transform duration-300 ease-spring group-active:rotate-12">
+                <Refrigerator size={15} className="text-ground" />
+              </span>
+              <span className="text-left">
+                <span className="block">Snap your fridge</span>
+                <span className="block text-xs font-normal text-ink-faint mt-0.5">
+                  Get meal ideas that close today's gaps
+                </span>
+              </span>
+            </button>
 
             <button
               onClick={() => {
@@ -427,9 +523,26 @@ export default function Home() {
         </div>
       )}
 
+      {analysisError && !analyzing && (
+        <div className="mx-4 mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-ink animate-fade-slide-up">
+          <p className="font-semibold">Couldn't analyze that meal</p>
+          <p className="mt-1 text-ink-dim">{analysisError}</p>
+          <button
+            onClick={() => setAnalysisError(null)}
+            className="mt-2 text-xs font-medium text-ink underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {photoUrl && analysis && (
         <MealReviewCard
-          imageUrl={photoUrl || ""}
+          images={photoUrls}
+          imageIndex={photoIndex}
+          onImageChange={setPhotoIndex}
+          onRefreshImages={refreshPhotoCandidates}
+          refreshingImages={refreshingPhotos}
           analysis={analysis}
           note={note}
           setNote={setNote}
@@ -438,8 +551,10 @@ export default function Home() {
           isSaving={isSaving}
           saveSuccess={saveSuccess}
           onCancel={() => {
-            setPhotoUrl(null)
+            setPhotoUrls([])
+            setPhotoIndex(0)
             setAnalysis(null)
+            setAnalysisError(null)
           } } 
         />
       )}
@@ -493,6 +608,14 @@ export default function Home() {
         onClose={() => setWorkoutLoggerOpen(false)}
         onSaved={() => setRefreshFeed((prev) => prev + 1)}
       />
+
+      <FridgeSuggest
+        open={fridgeOpen}
+        onClose={() => setFridgeOpen(false)}
+        onLog={logFridgeSuggestion}
+      />
+
+      <CoachReview open={coachOpen} onClose={() => setCoachOpen(false)} />
     </main>
   </div>
  )

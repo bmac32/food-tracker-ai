@@ -8,6 +8,11 @@
 -- existing policies use USING (true) — everyone can read/write everyone's
 -- meals. Replace with policies scoped to the owning user.
 -- -------------------------
+
+-- Guard: make sure the owner column exists before policies reference it.
+alter table public.meals
+  add column if not exists user_id uuid references auth.users(id);
+
 do $$
 declare
   pol record;
@@ -139,3 +144,40 @@ create policy "Anyone with the link can reply, nothing else"
     and sender_name is not distinct from
       (select s.sender_name from public.shared_meals s where s.id = shared_meals.id)
   );
+
+-- -------------------------
+-- USER PROFILES — display_name column
+-- Used as the sender name in meal-share emails (replaces a hardcoded name).
+-- -------------------------
+alter table public.user_profiles
+  add column if not exists display_name text;
+
+-- =========================================================
+-- VERIFICATION (run these one at a time after the above;
+-- they only read, so they're safe anytime)
+-- =========================================================
+
+-- 1. RLS is enabled on every app table:
+-- select tablename, rowsecurity
+-- from pg_tables
+-- where schemaname = 'public'
+--   and tablename in ('meals','user_goals','shared_meals','workouts','user_profiles');
+-- Expected: rowsecurity = true on all five.
+
+-- 2. No permissive policies remain on meals/user_goals:
+-- select tablename, policyname, cmd
+-- from pg_policies
+-- where schemaname = 'public'
+--   and tablename in ('meals','user_goals');
+-- Expected: 4 policies per table, each scoped to auth.uid() = user_id.
+
+-- 3. Orphan goal rows (NULL user_id) that RLS now hides:
+-- select count(*) as orphan_goals
+-- from public.user_goals
+-- where user_id is null;
+-- Expected: 0 going forward. Old orphans are invisible to everyone —
+-- the app owner should re-save goals once from the Edit Goals screen,
+-- or claim them with:
+--   update public.user_goals set user_id = '<your-auth-user-uuid>'
+--   where user_id is null;
+-- (find your uuid in Dashboard > Authentication > Users)

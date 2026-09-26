@@ -196,3 +196,31 @@ body {
     animation: none;
   }
 }
+/* -------------------------
+   MOBILE WEB HARDENING
+   ------------------------- */
+
+/* Kill horizontal page scroll from wide decorative layers (aurora blobs,
+   ring glows) without breaking position: sticky. `clip` — unlike `hidden`
+   — does not create a scroll container, so sticky keeps working. */
+html,
+body {
+  overflow-x: clip;
+}
+
+/* iOS Safari auto-zooms into any input/textarea/select with a computed
+   font-size under 16px, which shoves the whole layout sideways and feels
+   "broken". This targets iOS only (desktop keeps the designed sizes). */
+@supports (-webkit-touch-callout: none) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Don't let Safari's text inflation blow up the layout on rotate/zoom. */
+body {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
