@@ -72,6 +72,7 @@ export default function Home() {
     tip: CoachTip
     nextMeal: string
     followThrough: string | null
+    doneForDay?: boolean
   } | null>(null)
 
   // Continuous 0→1 scroll progress (not a hard threshold) so the header
@@ -410,19 +411,10 @@ export default function Home() {
   // -------------------------
   const PENDING_SUGGESTION_KEY = "pendingCoachSuggestion"
 
-  // Significant words for matching a suggestion ("beef stew") to a logged
-  // food ("a bowl of beef stew").
-  const foodWords = (str: string): string[] =>
-    String(str || "")
-      .toLowerCase()
-      .replace(/[^a-z\s]/g, " ")
-      .split(/\s+/)
-      .filter((w) => w.length > 2 && !["with", "and", "the", "for", "cup", "bow"].includes(w))
-
-  // Did the just-saved meal contain a food the coach actually suggested?
-  // Food-aware, not macro-aware: if she ate the suggested beef stew, say
-  // exactly that — never praise the wrong macro. Quiet by design: returns
-  // the ack line, or null (say nothing on a miss).
+  // Which macros did the just-saved meal meaningfully cover? Checks ALL of
+  // them, not just the tip's focus — a beef stew that delivered protein AND
+  // carbs should say both, so she learns what her meals actually give her.
+  // Quiet by design: returns the ack line, or null (say nothing on a miss).
   const checkFollowThrough = (meal: Analysis | null): string | null => {
     try {
       const raw = localStorage.getItem(PENDING_SUGGESTION_KEY)
@@ -430,24 +422,24 @@ export default function Home() {
       const pending = JSON.parse(raw)
       // Ancient suggestions don't count — 36h max.
       if (pending.at && Date.now() - pending.at > 36 * 3600 * 1000) return null
-      const suggestions: string[] = Array.isArray(pending.suggestions)
-        ? pending.suggestions
-        : []
-      const foods: string[] = Array.isArray(meal.foods) ? meal.foods : []
-      for (const food of foods) {
-        const fw = new Set(foodWords(food))
-        if (fw.size === 0) continue
-        for (const sug of suggestions) {
-          const sw = foodWords(sug)
-          if (sw.length === 0) continue
-          const swSet = new Set(sw)
-          // Match either way: "beef stew" vs "a bowl of beef stew".
-          if (sw.every((w) => fw.has(w)) || [...fw].every((w) => swSet.has(w))) {
-            return `Nice — you had the ${food}.`
-          }
-        }
+      const remaining = pending.remaining || {}
+      const floors: Record<string, number> = { protein: 8, carbs: 12, fat: 7 }
+      const covered: string[] = []
+      for (const m of ["protein", "carbs", "fat"]) {
+        const mealVal = Number((meal as any)[m]) || 0
+        if (mealVal < (floors[m] ?? 8)) continue
+        const remVal = Number(remaining[m]) || 0
+        // Covered = a solid share of what was left (or at/past goal already).
+        if (remVal <= 0 || mealVal >= 0.25 * remVal) covered.push(m)
       }
-      return null
+      if (covered.length === 0) return null
+      const list =
+        covered.length === 1
+          ? covered[0]
+          : covered.length === 2
+            ? `${covered[0]} and ${covered[1]}`
+            : `${covered[0]}, ${covered[1]}, and ${covered[2]}`
+      return `That meal had your ${list} covered.`
     } catch {
       return null
     }
@@ -483,19 +475,25 @@ export default function Home() {
       })
       const res = await fetch(`/api/coach/next?${params.toString()}`)
       const json = await res.json()
+      // Done for the day: no more "next meal" push — just closure (plus
+      // any follow-through ack above). The tip itself is skipped.
+      if (json?.doneForDay) {
+        setCoachTip({
+          tip: { headline: "", focus: "balanced", detail: "", suggestions: [] },
+          nextMeal: "",
+          followThrough,
+          doneForDay: true,
+        })
+        return
+      }
       if (json?.tip) {
-        // Remember the suggested foods; the NEXT logged meal gets checked
-        // against them. Suggestions expire with the next meal either way.
+        // Remember the remaining macros; the NEXT logged meal gets checked
+        // against all of them. Expires with the next meal either way.
         try {
-          const sug = Array.isArray(json.tip.suggestions)
-            ? json.tip.suggestions.filter(Boolean)
-            : []
-          if (sug.length > 0) {
-            localStorage.setItem(
-              PENDING_SUGGESTION_KEY,
-              JSON.stringify({ suggestions: sug.slice(0, 3), at: Date.now() })
-            )
-          }
+          localStorage.setItem(
+            PENDING_SUGGESTION_KEY,
+            JSON.stringify({ remaining: json.remaining || {}, at: Date.now() })
+          )
         } catch {}
         setCoachTip({
           tip: json.tip,
@@ -606,6 +604,7 @@ export default function Home() {
           tip={coachTip.tip}
           nextMeal={coachTip.nextMeal}
           followThrough={coachTip.followThrough}
+          doneForDay={coachTip.doneForDay}
           onClose={() => setCoachTip(null)}
         />
       )}

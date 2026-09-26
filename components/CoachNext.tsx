@@ -25,11 +25,13 @@ export default function CoachNext({
   tip,
   nextMeal,
   followThrough,
+  doneForDay,
   onClose,
 }: {
   tip: CoachTip
   nextMeal: string
   followThrough?: string | null
+  doneForDay?: boolean
   onClose: () => void
 }) {
   return (
@@ -51,6 +53,12 @@ export default function CoachNext({
           </p>
         )}
 
+        {doneForDay ? (
+          <p className="text-[13px] text-ink-dim leading-relaxed pt-0.5">
+            You&apos;re all set for today.
+          </p>
+        ) : (
+          <>
         <div className="flex items-center gap-2">
           <span className="w-6 h-6 rounded-full bg-surface-2 border border-hair flex items-center justify-center shrink-0">
             <Sparkles size={12} className="text-ink-faint" />
@@ -79,6 +87,8 @@ export default function CoachNext({
               </span>
             ))}
           </div>
+        )}
+          </>
         )}
       </div>
     </div>
