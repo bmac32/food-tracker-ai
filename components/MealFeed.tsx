@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../lib/supabase"
 import { Send, SlidersHorizontal, UtensilsCrossed } from "lucide-react"
+import PortionBalance from "./PortionBalance"
 import { getSmartFoodImages, fallbackImage } from "@/lib/getSmartFoodImage"
 import MealImageCarousel from "./MealImageCarousel"
 import WorkoutCard from "./WorkoutCard"
@@ -605,6 +606,11 @@ export default function MealFeed({
                         </span>
                       ))}
                     </div>
+
+                    {/* Portion balance — collapsible, quick pop in/out */}
+                    {Array.isArray(ai?.food_items) && ai.food_items.length > 0 && (
+                      <PortionBalance items={ai.food_items} className="pt-2" />
+                    )}
 
                     {meal.note && <p className="text-sm text-ink">{meal.note}</p>}
 
