@@ -270,9 +270,7 @@ export default function MealReviewCard({
               className="w-full mt-3 flex items-center justify-between bg-surface-2 rounded-xl px-3 py-2.5 text-xs text-ink transition-all duration-150 ease-spring hover:bg-white/10 active:scale-[0.99]"
             >
               <span>
-                {showBalance
-                  ? `Where your ${shareMode} comes from`
-                  : "Want to know where your % comes from?"}
+                {showBalance ? "My portions" : "View my portions"}
               </span>
               <ChevronDown
                 size={14}
