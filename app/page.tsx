@@ -274,6 +274,14 @@ export default function Home() {
     
     setIsSaving(true)
 
+    // Stamp the meal with the day the user is VIEWING (not necessarily
+    // today), keeping the current time-of-day so ordering stays sensible.
+    // Without this, logging on a past day silently filed the meal under today.
+    const now = new Date()
+    const stamp = new Date(currentDate)
+    stamp.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds())
+    const createdAt = stamp.toISOString()
+
     const safePhoto =
       photoUrl ||
       "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
@@ -282,7 +290,7 @@ export default function Home() {
 
     const optimisticMeal = {
       id: Date.now(),
-      created_at: new Date().toISOString(),
+      created_at: createdAt,
       photo_url: safePhoto,
       photo_candidates: candidates,
       ai_analysis: analysis,
@@ -299,6 +307,7 @@ export default function Home() {
       const { error } = await supabase.from("meals").insert([
         {
           user_id: user.id, // ✅ ADD THIS LINE
+          created_at: optimisticMeal.created_at, // the viewed day, not "now"
           photo_url: safePhoto,
           photo_candidates: candidates,
           note: optimisticMeal.note,
@@ -590,6 +599,7 @@ export default function Home() {
         open={workoutLoggerOpen}
         onClose={() => setWorkoutLoggerOpen(false)}
         onSaved={() => setRefreshFeed((prev) => prev + 1)}
+        currentDate={currentDate}
       />
 
       <FridgeSuggest

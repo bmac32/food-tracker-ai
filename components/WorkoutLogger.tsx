@@ -16,11 +16,12 @@ type Props = {
   open: boolean
   onClose: () => void
   onSaved: () => void
+  currentDate: Date
 }
 
 type Step = "type" | "duration" | "loading" | "review"
 
-export default function WorkoutLogger({ open, onClose, onSaved }: Props) {
+export default function WorkoutLogger({ open, onClose, onSaved, currentDate }: Props) {
   const [step, setStep] = useState<Step>("type")
   const [workoutType, setWorkoutType] = useState<WorkoutType | null>(null)
   const [duration, setDuration] = useState("")
@@ -92,6 +93,13 @@ export default function WorkoutLogger({ open, onClose, onSaved }: Props) {
       const { error } = await supabase.from("workouts").insert([
         {
           user_id: user.id,
+          // File under the day being viewed, not "now" — same fix as meals.
+          created_at: (() => {
+            const now = new Date()
+            const stamp = new Date(currentDate)
+            stamp.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds())
+            return stamp.toISOString()
+          })(),
           workout_type: workoutType,
           duration_minutes: Math.round(parseFloat(duration)),
           calories_burned: calories,
