@@ -16,6 +16,43 @@ const U = (id: string) =>
  * photos, never a burger.
  */
 const CATEGORY_FALLBACKS: { match: RegExp; ids: string[] }[] = [
+  // NOTE: order matters — first match wins. Keep specific combos
+  // (breakfast, mexican) BEFORE their generic cousins (burger) so
+  // "breakfast burrito" doesn't resolve to cheeseburgers.
+  {
+    match: /breakfast/i,
+    ids: [
+      "photo-1484723091739-30a097e8f929",
+      "photo-1525351484163-7529414344d8",
+      "photo-1504754524776-8f4f37790ca0",
+      "photo-1567620905732-2d1ec7ab7445",
+    ],
+  },
+  {
+    match: /burrito|taco|quesadilla|nacho|enchilada|fajita|taquito/i,
+    ids: [
+      "photo-1551504734-5ee1c4a1479b",
+      "photo-1565299585323-38d6b0865b47",
+      "photo-1613514785940-daed07799d9b",
+    ],
+  },
+  {
+    match: /apple|banana|fruit|berries|grapes|orange|pear|peach|mango|pineapple|melon/i,
+    ids: [
+      "photo-1490474418585-ba9bad8fd0ea",
+      "photo-1519996529931-28324d5a630e",
+      "photo-1490885578174-acda8905c2c6",
+      "photo-1601493700631-2b16ec4b4716",
+    ],
+  },
+  {
+    match: /peanut butter|almond|nuts|hummus|snack|chips|popcorn|crackers|trail mix/i,
+    ids: [
+      "photo-1508061253366-f7da158b6d46",
+      "photo-1490474418585-ba9bad8fd0ea",
+      "photo-1504674900247-0877df9cc836",
+    ],
+  },
   {
     match: /salad|bowl|veggie|vegetable|greens|kale/i,
     ids: [
@@ -31,10 +68,11 @@ const CATEGORY_FALLBACKS: { match: RegExp; ids: string[] }[] = [
       "photo-1565299624946-b28f40a0ae38",
       "photo-1574071318508-1cdbab80d002",
       "photo-1513104890138-7c749659a591",
+      "photo-1585238342024-78d387f4a707",
     ],
   },
   {
-    match: /burger|sandwich|wrap|burrito|taco|quesadilla|panini/i,
+    match: /burger|sandwich|wrap|panini/i,
     ids: [
       "photo-1568901346375-23c9450c58cd",
       "photo-1553979459-d2229ba7433b",
@@ -43,7 +81,7 @@ const CATEGORY_FALLBACKS: { match: RegExp; ids: string[] }[] = [
     ],
   },
   {
-    match: /egg|pancake|waffle|toast|oatmeal|cereal|breakfast|granola/i,
+    match: /egg|pancake|waffle|toast|oatmeal|cereal|granola/i,
     ids: [
       "photo-1484723091739-30a097e8f929",
       "photo-1525351484163-7529414344d8",
