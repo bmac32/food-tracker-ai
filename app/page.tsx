@@ -117,37 +117,47 @@ export default function Home() {
   // -------------------------
   // 📸 IMAGE UPLOAD + ANALYZE
   // -------------------------
-  const uploadAndAnalyze = async (file: File) => {
+  const uploadAndAnalyze = async (files: File[]) => {
     setAnalyzing(true)
     setAnalysis(null)
     setAnalysisError(null)
 
     try {
-      const fileName = `${Date.now()}-${file.name}`
+      const picked = files.slice(0, 4)
 
-      const { error: uploadError } = await supabase.storage
-        .from("meal-photos")
-        .upload(fileName, file)
+      const urls = await Promise.all(
+        picked.map(async (file) => {
+          const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}-${file.name}`
 
-      if (uploadError) {
-        console.error("UPLOAD ERROR:", uploadError)
+          const { error: uploadError } = await supabase.storage
+            .from("meal-photos")
+            .upload(fileName, file)
+
+          if (uploadError) throw uploadError
+
+          const { data: publicData } = supabase.storage
+            .from("meal-photos")
+            .getPublicUrl(fileName)
+
+          return publicData?.publicUrl || ""
+        })
+      )
+
+      const valid = urls.filter(Boolean)
+      if (valid.length === 0) {
+        setAnalysisError("Couldn't upload the photos — please try again.")
         return
       }
 
-      const { data: publicData } = supabase.storage
-        .from("meal-photos")
-        .getPublicUrl(fileName)
-
-      const url = publicData?.publicUrl || ""
-      // User-uploaded photo: single candidate, no picker needed.
-      setPhotoUrls(url ? [url] : [])
+      // User-uploaded photos: all candidates, no picker needed.
+      setPhotoUrls(valid)
       setPhotoIndex(0)
       setIsUserPhoto(true)
 
       const res = await fetch("/api/meals/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: url }),
+        body: JSON.stringify({ imageUrls: valid }),
       })
 
       const data = await res.json()
@@ -175,7 +185,8 @@ export default function Home() {
 
       setAnalysis(parsedAnalysis)
     } catch (err) {
-      console.error(err)
+      console.error("UPLOAD ERROR:", err)
+      setAnalysisError("Couldn't upload the photos — please try again.")
     } finally {
       setAnalyzing(false)
     }
@@ -561,9 +572,9 @@ export default function Home() {
             <p className="text-xs text-ink-faint -mt-3">How do you want to add it?</p>
 
             <Upload
-              onFileSelect={(file) => {
+              onFileSelect={(files) => {
                 setMealChooserOpen(false)
-                uploadAndAnalyze(file)
+                uploadAndAnalyze(files)
               }}
             />
 

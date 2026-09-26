@@ -126,9 +126,10 @@ function extractJson(text: string): any {
 const JSON_INSTRUCTION = `Return ONLY valid JSON, no markdown fences:
 {
  "meal_name": "",
- "foods": [{"item": "plain food name, no quantities", "grams": number, "protein": number, "carbs": number, "fat": number}],
+ "foods": [{"item": "grilled chicken breast", "grams": 150, "protein": 46, "carbs": 0, "fat": 5}, {"item": "roasted carrots", "grams": 100, "protein": 1, "carbs": 10, "fat": 4}],
  "image_query": "3-6 word stock-photo search describing this dish as plated, e.g. 'fluffy scrambled eggs on toast'. If the meal is several separate items rather than one cooked dish (snack plate, crackers with dips, etc.), describe it as a plate, e.g. 'hummus cheese crackers snack plate'"
-}`
+}
+List EVERY distinct food you can identify as its own item — a meal with steak and carrots is two items, not one. Plain item names, no quantities in the name.`
 
 /**
  * Hybrid accuracy: the model identifies foods and estimates PORTION GRAMS
@@ -276,10 +277,22 @@ async function analyzeText(text: string) {
   return finalize(extractJson(responseText))
 }
 
+/** Photo prompt — one version per photo count. Multi-photo mode tells the
+ *  model the shots are the SAME meal and to merge, never double-count. */
+function photoPrompt(count: number): string {
+  const multi =
+    `These ${count} photos are all the SAME meal (different angles or dishes of one meal). ` +
+    `Identify every visible food across ALL photos with realistic portion sizes, then estimate macros for the whole meal as one. ` +
+    `Merge everything into a single ingredient list — do NOT double-count the same food appearing in more than one photo.`
+  const single =
+    `Look at this meal photo. Identify every visible food with realistic portion sizes, then estimate macros.`
+  return `You are a nutrition expert. ${count > 1 ? multi : single}\n\n${JSON_INSTRUCTION}\n\n${ESTIMATION_RULES}`
+}
+
 // ---------------------------------------------------------------------------
 // Photo mode — Gemini Flash single structured pass (cheap)
 // ---------------------------------------------------------------------------
-async function analyzePhotoWithGemini(base64Image: string) {
+async function analyzePhotoWithGemini(base64Images: string[]) {
   if (!GOOGLE_KEY) throw new Error("GOOGLE_AI_API_KEY not configured")
 
   const res = await fetch(
@@ -292,16 +305,16 @@ async function analyzePhotoWithGemini(base64Image: string) {
           {
             parts: [
               {
-                text: `You are a nutrition expert. Look at this meal photo. Identify every visible food with realistic portion sizes, then estimate macros.\n\n${JSON_INSTRUCTION}\n\n${ESTIMATION_RULES}`,
+                text: photoPrompt(base64Images.length),
               },
-              {
-                // NOTE: the Gemini REST field is camelCase `inlineData`
-                // (snake_case `inline_data` silently fails).
+              // NOTE: the Gemini REST field is camelCase `inlineData`
+              // (snake_case `inline_data` silently fails).
+              ...base64Images.map((data) => ({
                 inlineData: {
                   mimeType: "image/jpeg",
-                  data: base64Image,
+                  data,
                 },
-              },
+              })),
             ],
           },
         ],
@@ -321,25 +334,25 @@ async function analyzePhotoWithGemini(base64Image: string) {
 // ---------------------------------------------------------------------------
 // Photo fallback — 1 cheap Claude vision call (single structured pass)
 // ---------------------------------------------------------------------------
-async function analyzePhotoWithClaude(base64Image: string) {
+async function analyzePhotoWithClaude(base64Images: string[]) {
   const res = await getAnthropic().messages.create({
     model: VISION_FALLBACK_MODEL,
-    max_tokens: 700,
+    max_tokens: 900,
     messages: [
       {
         role: "user",
         content: [
-          {
-            type: "image",
+          ...base64Images.map((data) => ({
+            type: "image" as const,
             source: {
-              type: "base64",
-              media_type: "image/jpeg",
-              data: base64Image,
+              type: "base64" as const,
+              media_type: "image/jpeg" as const,
+              data,
             },
-          },
+          })),
           {
-            type: "text",
-            text: `You are a nutrition expert. Look at this meal photo. Identify every visible food with realistic portion sizes, then estimate macros.\n\n${JSON_INSTRUCTION}\n\n${ESTIMATION_RULES}`,
+            type: "text" as const,
+            text: photoPrompt(base64Images.length),
           },
         ],
       },
@@ -366,7 +379,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { imageUrl, text } = await req.json()
+    const { imageUrl, imageUrls, text } = await req.json()
 
     // ---------------- TEXT MODE ----------------
     if (text) {
@@ -382,18 +395,28 @@ export async function POST(req: Request) {
     }
 
     // ---------------- PHOTO MODE ----------------
-    if (!imageUrl || !isAllowedImageUrl(String(imageUrl))) {
+    // Accepts imageUrls (up to 4, analyzed as ONE meal) or legacy imageUrl.
+    let urls: string[] = []
+    if (Array.isArray(imageUrls)) urls = imageUrls.map(String)
+    else if (imageUrl) urls = [String(imageUrl)]
+    urls = urls.filter(Boolean).slice(0, 4)
+
+    if (urls.length === 0 || !urls.every(isAllowedImageUrl)) {
       return NextResponse.json(
         { error: "A valid meal photo is required." },
         { status: 400 }
       )
     }
 
-    let base64Image: string
+    let base64Images: string[]
     try {
-      const imageResponse = await fetch(imageUrl)
-      if (!imageResponse.ok) throw new Error(`Image fetch ${imageResponse.status}`)
-      base64Image = Buffer.from(await imageResponse.arrayBuffer()).toString("base64")
+      base64Images = await Promise.all(
+        urls.map(async (u) => {
+          const imageResponse = await fetch(u)
+          if (!imageResponse.ok) throw new Error(`Image fetch ${imageResponse.status}`)
+          return Buffer.from(await imageResponse.arrayBuffer()).toString("base64")
+        })
+      )
     } catch (err) {
       console.error("IMAGE FETCH FAILED:", err)
       return NextResponse.json(
@@ -404,14 +427,14 @@ export async function POST(req: Request) {
 
     // Pass 1: cheap Gemini structured pass
     try {
-      return NextResponse.json(await analyzePhotoWithGemini(base64Image))
+      return NextResponse.json(await analyzePhotoWithGemini(base64Images))
     } catch (err) {
       console.error("GEMINI PHOTO FAILED:", err)
     }
 
     // Pass 2: cheap Claude vision fallback
     try {
-      return NextResponse.json(await analyzePhotoWithClaude(base64Image))
+      return NextResponse.json(await analyzePhotoWithClaude(base64Images))
     } catch (err) {
       console.error("CLAUDE VISION FAILED:", err)
     }
