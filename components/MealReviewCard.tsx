@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import MealImageCarousel from "./MealImageCarousel"
+import { fallbackSet } from "@/lib/getSmartFoodImage"
 
 type Props = {
   images: string[]
@@ -85,7 +86,7 @@ export default function MealReviewCard({
           images={
             images.length > 0
               ? images
-              : ["https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"]
+              : fallbackSet(analysis.meal_name || "meal")
           }
           index={imageIndex}
           onChange={onImageChange}
