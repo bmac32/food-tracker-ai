@@ -4,13 +4,14 @@ import { getRouteUser, createServerSupabase } from "@/lib/supabaseServer"
 
 /**
  * POST /api/coach/review
- * Authenticated. Body: { days?: number } (default 7, max 14).
+ * Authenticated. No body needed.
  *
- * Pulls the user's recent meals + workouts + goals, computes honest
- * per-day stats server-side, then asks a "fitness instructor" persona
- * for a structured review: what's working, what's missing, and what
- * to do next week. Every claim the model makes must tie to the stats
- * it's given — no invented meals or numbers.
+ * Looks back up to 14 days and reviews only the days the user actually
+ * logged meals — a single day gets a day review, more days get a wider
+ * one. The persona is a warm, Apple-Health-calm nutrition coach: never
+ * shaming, never moralizing about food, sensitive to people with a
+ * complicated relationship with eating. Every claim must tie to the
+ * stats — no invented meals or numbers.
  */
 function getAnthropic() {
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -56,19 +57,19 @@ export async function POST(req: Request) {
 
   if (isRateLimited(user.id)) {
     return NextResponse.json(
-      { error: "Coach is catching their breath — try again in a bit." },
+      { error: "Please wait a bit, then try again." },
       { status: 429 }
     )
   }
 
   try {
-    const body = await req.json().catch(() => ({}))
-    const days = Math.min(Math.max(num(body.days) || 7, 1), 14)
+    // Adaptive scope: look back up to 14 days, review the days with meals.
+    const LOOKBACK_DAYS = 14
+    const since = new Date()
+    since.setDate(since.getDate() - (LOOKBACK_DAYS - 1))
+    since.setHours(0, 0, 0, 0)
 
     const supabase = await createServerSupabase()
-    const since = new Date()
-    since.setDate(since.getDate() - (days - 1))
-    since.setHours(0, 0, 0, 0)
 
     const [{ data: meals }, { data: workouts }, { data: goalRows }] =
       await Promise.all([
@@ -149,7 +150,7 @@ export async function POST(req: Request) {
 
     if (n === 0) {
       return NextResponse.json(
-        { error: "Log a few meals first — your coach needs something to review." },
+        { error: "Log a meal to get your first review." },
         { status: 422 }
       )
     }
@@ -157,7 +158,6 @@ export async function POST(req: Request) {
     const avg = (f: (d: DayStat) => number) =>
       Math.round(dayStats.reduce((s, d) => s + f(d), 0) / n)
     const stats = {
-      days_analyzed: days,
       days_with_meals: n,
       avg_calories: avg((d) => d.calories),
       avg_protein: avg((d) => d.protein),
@@ -165,39 +165,54 @@ export async function POST(req: Request) {
       avg_fat: avg((d) => d.fat),
       avg_meals_per_day: Math.round((dayStats.reduce((s, d) => s + d.meals, 0) / n) * 10) / 10,
       protein_goal_hit_days: daysWithMeals.filter((d) => d.protein >= goals.protein * 0.8).length,
-      fat_over_days: daysWithMeals.filter((d) => d.fat > goals.fat).length,
+      fat_above_target_days: daysWithMeals.filter((d) => d.fat > goals.fat).length,
       total_workouts: (workouts || []).length,
       workout_days: dayStats.filter((d) => d.workouts > 0).length,
       total_workout_minutes: totalWorkoutMinutes,
       workout_types: [...new Set(workoutTypes)].slice(0, 6),
       recent_meals: mealNames.slice(-10),
+      daily_totals: daysWithMeals.map(
+        (d) => `${d.date}: ${d.calories} cal, ${d.protein}g protein, ${d.carbs}g carbs, ${d.fat}g fat (${d.meals} meals)`
+      ),
     }
 
-    // ---- The coach's review ----
-    const prompt = `You are an experienced, no-nonsense fitness instructor reviewing a client's food log. Be direct and encouraging like a real coach — specific numbers, zero fluff, no generic advice. Every claim must come from the data below; never invent meals, workouts, or numbers.
+    const scopeSentence =
+      n === 1
+        ? `today — 1 day logged (${daysWithMeals[0].date})`
+        : `${n} days with meals logged, out of the last ${LOOKBACK_DAYS} days`
 
-CLIENT DATA — last ${days} days (${n} days with meals logged):
-- Calorie goal: ${goals.calories}/day | avg eaten: ${stats.avg_calories}
-- Protein goal: ${goals.protein}g/day | avg: ${stats.avg_protein}g | hit 80%+ of goal on ${stats.protein_goal_hit_days} of ${n} days
-- Fat goal: ${goals.fat}g/day | avg: ${stats.avg_fat}g | OVER goal on ${stats.fat_over_days} of ${n} days
-- Carb goal: ${goals.carbs}g/day | avg: ${stats.avg_carbs}g
-- Avg meals logged per day: ${stats.avg_meals_per_day}
+    // ---- The coach's review ----
+    // Warm, calm, Apple-Health tone. Never shaming, never moralizing about
+    // food, sensitive to disordered eating. Additive suggestions only —
+    // nothing restrictive.
+    const prompt = `You are a warm, knowledgeable nutrition coach reviewing a client's food log. Think calm and respectful, like Apple Health — plain-spoken, encouraging, zero hype.
+
+CRITICAL — FOOD SENSITIVITY: this person may have a complicated relationship with food. Never shame, scold, or moralize. Never label foods "good", "bad", "clean", "cheat", or "guilty". Never praise eating very little. Never suggest eating less, skipping meals, fasting, or "making up for" anything. If intake looks consistently very low, mention gently — as care, not criticism — that eating too little can leave you low on energy, and suggest checking in with a professional if it continues.
+
+Every claim must come from the data below; never invent meals, workouts, or numbers.
+
+CLIENT DATA — ${scopeSentence}:
+- Calories: target ${goals.calories}/day · logged ${stats.avg_calories}/day
+- Protein: target ${goals.protein}g/day · logged ${stats.avg_protein}g/day (hit 80%+ of target on ${stats.protein_goal_hit_days} of ${n} days)
+- Fat: target ${goals.fat}g/day · logged ${stats.avg_fat}g/day (above target on ${stats.fat_above_target_days} of ${n} days)
+- Carbs: target ${goals.carbs}g/day · logged ${stats.avg_carbs}g/day
+- Meals logged per day: ${stats.avg_meals_per_day}
 - Workouts: ${stats.total_workouts} total across ${stats.workout_days} days (${stats.total_workout_minutes} min). Types: ${stats.workout_types.join(", ") || "none logged"}
+- Daily totals: ${stats.daily_totals.join(" | ")}
 - Recent meals: ${stats.recent_meals.join("; ") || "none"}
 
-IMPORTANT CONTEXT: this tracker only records calories, protein, carbs, and fat — no fiber, sugar, sodium, vitamins, or water. If the meal names suggest low vegetable/fruit variety or a likely fiber gap, you may flag it as a likely gap (say "likely"), but don't state unmeasured nutrients as fact.
+IMPORTANT CONTEXT: this tracker only records calories, protein, carbs, and fat — no fiber, sugar, sodium, vitamins, or water. If the meal names suggest low fruit/vegetable variety, you may note it as a likely observation (say "looks like"), never as a measured fact.
 
-Tell them what they're missing. Return ONLY valid JSON, no markdown fences:
+Write the review as JSON, no markdown fences. Keep every line short and human:
 {
-  "headline": "one direct sentence verdict in coach voice",
-  "grade": "a letter grade like B+",
-  "wins": ["2-3 specific things they're doing right, with their numbers"],
-  "gaps": [
-    { "gap": "what's missing or off", "why": "why it matters, one line", "fix": "one concrete fix for next week" }
+  "headline": "one warm, specific sentence — the takeaway of ${n === 1 ? "today" : "this period"}",
+  "highlights": ["2-3 specific things going well, with their numbers"],
+  "ideas": [
+    { "idea": "a small, kind, practical suggestion", "why": "why it could help, one gentle line", "try": "one concrete way to try it" }
   ],
-  "next_week": ["2-3 concrete actions for the coming week"]
+  "next_steps": ["2-3 small next steps — additive ('add', 'try', 'keep'), never restrictive"]
 }
-Maximum 3 gaps — pick the ones that matter most.`
+Maximum 3 ideas — pick the ones that matter most. No grades, no verdicts on the person, no "missing" or "failing" language.`
 
     let review: any = null
     try {
@@ -215,24 +230,23 @@ Maximum 3 gaps — pick the ones that matter most.`
 
     if (!review || !review.headline) {
       return NextResponse.json(
-        { error: "Coach couldn't write up the review — please try again." },
+        { error: "Couldn't put the review together — please try again." },
         { status: 500 }
       )
     }
 
     const clean = {
       headline: str(review.headline, 220),
-      grade: str(review.grade, 4) || "—",
-      wins: (Array.isArray(review.wins) ? review.wins : []).map((w: any) => str(w, 220)).filter(Boolean).slice(0, 4),
-      gaps: (Array.isArray(review.gaps) ? review.gaps : [])
-        .map((gp: any) => ({
-          gap: str(gp?.gap, 160),
-          why: str(gp?.why, 220),
-          fix: str(gp?.fix, 220),
+      highlights: (Array.isArray(review.highlights) ? review.highlights : []).map((w: any) => str(w, 220)).filter(Boolean).slice(0, 4),
+      ideas: (Array.isArray(review.ideas) ? review.ideas : [])
+        .map((it: any) => ({
+          idea: str(it?.idea, 160),
+          why: str(it?.why, 220),
+          try: str(it?.try, 220),
         }))
-        .filter((gp: any) => gp.gap)
+        .filter((it: any) => it.idea)
         .slice(0, 3),
-      next_week: (Array.isArray(review.next_week) ? review.next_week : []).map((w: any) => str(w, 220)).filter(Boolean).slice(0, 4),
+      next_steps: (Array.isArray(review.next_steps) ? review.next_steps : []).map((w: any) => str(w, 220)).filter(Boolean).slice(0, 4),
     }
 
     return NextResponse.json({ goals, stats, review: clean })
