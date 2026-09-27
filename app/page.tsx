@@ -74,10 +74,10 @@ export default function Home() {
   const [coachTip, setCoachTip] = useState<{
     tip: CoachTip
     nextMeal: string
-    followThrough: string | null
+    /** Woven follow-through line for the done-for-day closure card. */
+    closureNote?: string | null
     doneForDay?: boolean
     fridgeAction?: boolean
-    diningTip?: { text: string; source: string } | null
   } | null>(null)
   const [coachWorkout, setCoachWorkout] = useState<{
     tip: WorkoutMoveTip
@@ -424,11 +424,16 @@ export default function Home() {
   // -------------------------
   const PENDING_SUGGESTION_KEY = "pendingCoachSuggestion"
 
-  // Which macros did the just-saved meal meaningfully cover? Checks ALL of
-  // them, not just the tip's focus — a beef stew that delivered protein AND
-  // carbs should say both, so she learns what her meals actually give her.
-  // Quiet by design: returns the ack line, or null (say nothing on a miss).
-  const checkFollowThrough = (meal: Analysis | null): string | null => {
+  // Follow-through weave (backlog #5/#7): which ONE macro did the
+  // just-saved meal most meaningfully cover? The coach weaves this into
+  // the card's detail instead of a separate ack line — one macro, never
+  // a list, so it reads like a thought, not a report.
+  // "The main macro that mattered most" = the one the coach had asked for
+  // (closes the loop) if covered, else the biggest dent in what was left.
+  // Quiet by design: null on a miss (say nothing).
+  const checkFollowThrough = (
+    meal: Analysis | null
+  ): { topMacro: string; mealName: string } | null => {
     try {
       const raw = localStorage.getItem(PENDING_SUGGESTION_KEY)
       if (!raw || !meal) return null
@@ -436,26 +441,38 @@ export default function Home() {
       // Ancient suggestions don't count — 36h max.
       if (pending.at && Date.now() - pending.at > 36 * 3600 * 1000) return null
       const remaining = pending.remaining || {}
+      const prevFocus = String(pending.focus || "")
       const floors: Record<string, number> = { protein: 8, carbs: 12, fat: 7 }
       const covered: string[] = []
+      const share: Record<string, number> = {}
       for (const m of ["protein", "carbs", "fat"]) {
         const mealVal = Number((meal as any)[m]) || 0
         if (mealVal < (floors[m] ?? 8)) continue
         const remVal = Number(remaining[m]) || 0
         // Covered = a solid share of what was left (or at/past goal already).
-        if (remVal <= 0 || mealVal >= 0.25 * remVal) covered.push(m)
+        if (remVal <= 0 || mealVal >= 0.25 * remVal) {
+          covered.push(m)
+          share[m] = remVal > 0 ? mealVal / remVal : 0
+        }
       }
       if (covered.length === 0) return null
-      const list =
-        covered.length === 1
-          ? covered[0]
-          : covered.length === 2
-            ? `${covered[0]} and ${covered[1]}`
-            : `${covered[0]}, ${covered[1]}, and ${covered[2]}`
-      return `That meal had your ${list} covered.`
+      const topMacro =
+        prevFocus && covered.includes(prevFocus)
+          ? prevFocus
+          : covered.sort((a, b) => (share[b] ?? 0) - (share[a] ?? 0))[0]
+      const mealName =
+        String((meal as any).meal_name || "").trim() || "That meal"
+      return { topMacro, mealName }
     } catch {
       return null
     }
+  }
+
+  // Tiny function-framed whys for the done-for-day closure line.
+  const MACRO_WHY: Record<string, string> = {
+    protein: "it's what's keeping you full",
+    carbs: "that's your energy covered",
+    fat: "that's what's keeping you satisfied",
   }
 
   const UNDERFUEL_KEY = "underfuel:lastShown"
@@ -476,9 +493,10 @@ export default function Home() {
     const end = new Date(viewing)
     end.setHours(23, 59, 59, 999)
 
-    // Follow-through check: the previous suggestion expires with this meal,
-    // whether or not it was followed. Say nothing on a miss.
-    const followThrough = checkFollowThrough(analysis)
+    // Follow-through weave: the previous suggestion expires with this
+    // meal, whether or not it was followed. The single most meaningful
+    // macro goes to the server to be woven into the detail; silence on a miss.
+    const ft = checkFollowThrough(analysis)
     try {
       localStorage.removeItem(PENDING_SUGGESTION_KEY)
     } catch {}
@@ -502,17 +520,27 @@ export default function Home() {
         hour: String(new Date().getHours()),
         underfuelEligible,
         tz,
+        coveredTop: ft?.topMacro || "",
+        lastMeal: ft?.mealName || "",
       })
       const res = await fetch(`/api/coach/next?${params.toString()}`)
       const json = await res.json()
-      // Done for the day: no more "next meal" push — just closure (plus
-      // any follow-through ack above). The tip itself is skipped.
+      // Done for the day: no more "next meal" push — just closure. The
+      // follow-through becomes one fluid line above it, not a separate ack.
       if (json?.doneForDay) {
         setUnderfuelCard(null)
+        let closureNote: string | null = null
+        if (ft) {
+          const name =
+            ft.mealName === "That meal"
+              ? "That meal"
+              : `That ${ft.mealName.charAt(0).toLowerCase()}${ft.mealName.slice(1)}`
+          closureNote = `${name} took care of your ${ft.topMacro} — ${MACRO_WHY[ft.topMacro] || "nicely done"}.`
+        }
         setCoachTip({
           tip: { headline: "", focus: "balanced", detail: "", suggestions: [] },
           nextMeal: "",
-          followThrough,
+          closureNote,
           doneForDay: true,
         })
         return
@@ -533,20 +561,22 @@ export default function Home() {
       }
       setUnderfuelCard(null)
       if (json?.tip) {
-        // Remember the remaining macros; the NEXT logged meal gets checked
-        // against all of them. Expires with the next meal either way.
+        // Remember the remaining macros AND the focus; the NEXT logged meal
+        // gets checked against all of them. Expires with the next meal either way.
         try {
           localStorage.setItem(
             PENDING_SUGGESTION_KEY,
-            JSON.stringify({ remaining: json.remaining || {}, at: Date.now() })
+            JSON.stringify({
+              remaining: json.remaining || {},
+              at: Date.now(),
+              focus: json.tip?.focus || "balanced",
+            })
           )
         } catch {}
         setCoachTip({
           tip: json.tip,
           nextMeal: json.nextMeal || "your next meal",
-          followThrough,
           fridgeAction: !!json.fridgeAction,
-          diningTip: json.diningTip || null,
         })
       }
     } catch {
@@ -719,11 +749,10 @@ export default function Home() {
         <CoachNext
           tip={coachTip.tip}
           nextMeal={coachTip.nextMeal}
-          followThrough={coachTip.followThrough}
           doneForDay={coachTip.doneForDay}
+          closureNote={coachTip.closureNote}
           fridgeAction={coachTip.fridgeAction}
           onFridgeSnap={() => setFridgeOpen(true)}
-          diningTip={coachTip.diningTip}
           onClose={() => setCoachTip(null)}
         />
       )}

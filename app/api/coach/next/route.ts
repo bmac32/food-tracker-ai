@@ -5,7 +5,6 @@ import {
   underfuelLibraryText,
   getUnderfuelFact,
 } from "@/lib/underfuelGuidance"
-import { findRestaurantTip } from "@/lib/restaurantTips"
 
 /**
  * GET /api/coach/next?start=ISO&end=ISO&hour=13
@@ -195,6 +194,15 @@ export async function GET(req: Request) {
   // schedules and timezones, and a wrong guess discredits the coach.
   const nextMeal = "your next meal"
 
+  // Follow-through weave (backlog #5/#7): the client passes the single
+  // macro the just-logged meal most meaningfully covered, so the model
+  // can acknowledge it fluidly inside "detail" instead of a separate line.
+  const coveredTopRaw = String(params.get("coveredTop") || "").trim()
+  const coveredTop = ["protein", "carbs", "fat"].includes(coveredTopRaw)
+    ? coveredTopRaw
+    : ""
+  const lastMeal = String(params.get("lastMeal") || "").trim().slice(0, 80)
+
   // Done for the day: every macro is within a snack of its goal. Don't push
   // another meal — the client shows a quiet closure card instead. This also
   // skips the model call entirely.
@@ -323,10 +331,16 @@ DATA:
 - Meals today: ${mealLines.join("; ")}
 - Foods she eats often: ${usual.join("; ") || "unknown"}
 - Recent meals: ${recentMealsText}
+- Last meal coverage: ${coveredTop ? `${lastMeal || "that meal"} took care of ${coveredTop}` : "none — nothing meaningful to acknowledge"}
+
+MACRO WHYS (tiny, function-framed — use when acknowledging coverage):
+- protein: keeps you full and strong
+- carbs: your body's quickest energy
+- fat: keeps a meal satisfying
 
 TASK: Write like a friendly dietitian texting her — plain-spoken, warm, brief, zero judgment. Subtle, not coachy.
 - "headline": casual and short, like "grab some protein at your next meal". No hype, no exclamation marks. Never name a meal (no breakfast/lunch/dinner) — always say "next meal".
-- "detail": exactly one sentence, conversational. If relevant, tie it to how she'll feel (energy, hunger) rather than the numbers. Never say she's "behind", "low", or "lacking" — just note what she hasn't had much of yet. At most one number, ideally none.
+- "detail": 1-2 sentences, conversational. If last-meal coverage is provided: open by naming it — the meal, the single macro, and its tiny why — then flow into what's next. The acknowledgment IS the detail's first half; never a separate praise sentence, never a list of macros. If no coverage, write the forward guidance as before: tie it to how she'll feel (energy, hunger) rather than the numbers. Never say she's "behind", "low", or "lacking" — just note what she hasn't had much of yet. At most one number, ideally none.
 - "suggestions": 3 specific, simple foods or small meals that fill the gap. GROUND EVERY SUGGESTION IN HER HISTORY: use her usual foods and recent meals first. If a recent meal fits the gap, name it directly as a question — e.g. "still have that beef stew from yesterday?" Never suggest a dish with no basis in what she eats. Keep each under 8 words.
 - The whole thing must read in 3 seconds. If she's on track across the board, say so warmly in one line (e.g. "you're eating well today — keep doing what you're doing") with 3 easy, balanced suggestions from her history.
 
@@ -369,18 +383,10 @@ Return ONLY valid JSON, no markdown fences:
     fridgeAction = groundedCount < 2
   }
 
-  // Eating-out tip (backlog #7): one practical, cited line when today's
-  // meals look like restaurant food. Quiet, never preachy.
-  const diningHit = findRestaurantTip(mealLines)
-  const diningTip = diningHit
-    ? { text: diningHit.tip, source: diningHit.source }
-    : null
-
   return NextResponse.json({
     tip,
     underfuel,
     fridgeAction,
-    diningTip,
     nextMeal,
     mealsLogged: mealLines.length,
     remaining,

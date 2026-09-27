@@ -1,17 +1,12 @@
 "use client"
 
-import { Check, Refrigerator, Sparkles, UtensilsCrossed, X } from "lucide-react"
+import { Refrigerator, Sparkles, X } from "lucide-react"
 
 export type CoachTip = {
   headline: string
   focus: "protein" | "carbs" | "fat" | "balanced"
   detail: string
   suggestions: string[]
-}
-
-export type DiningTip = {
-  text: string
-  source: string
 }
 
 const FOCUS_COLOR: Record<CoachTip["focus"], string> = {
@@ -29,21 +24,20 @@ const FOCUS_COLOR: Record<CoachTip["focus"], string> = {
 export default function CoachNext({
   tip,
   nextMeal,
-  followThrough,
   doneForDay,
+  closureNote,
   fridgeAction,
   onFridgeSnap,
-  diningTip,
   onClose,
 }: {
   tip: CoachTip
   nextMeal: string
-  followThrough?: string | null
   doneForDay?: boolean
+  /** Woven follow-through for the done-for-day closure, e.g. "That salmon took care of your protein." */
+  closureNote?: string | null
   /** Suggestions weren't grounded in her history — offer a fridge snap instead of guessing. */
   fridgeAction?: boolean
   onFridgeSnap?: () => void
-  diningTip?: DiningTip | null
   onClose: () => void
 }) {
   const showFridge = !!fridgeAction && !!onFridgeSnap
@@ -59,17 +53,17 @@ export default function CoachNext({
       </button>
 
       <div className="relative space-y-2">
-        {followThrough && (
-          <p className="flex items-center gap-1.5 text-[12px] font-medium text-ink-dim">
-            <Check size={12} className="text-protein shrink-0" />
-            {followThrough}
-          </p>
-        )}
-
         {doneForDay ? (
-          <p className="text-[13px] text-ink-dim leading-relaxed pt-0.5">
-            You&apos;re all set for today.
-          </p>
+          <>
+            {closureNote && (
+              <p className="text-[13px] text-ink-dim leading-relaxed">
+                {closureNote}
+              </p>
+            )}
+            <p className="text-[13px] text-ink-dim leading-relaxed pt-0.5">
+              You&apos;re all set for today.
+            </p>
+          </>
         ) : (
           <>
         <div className="flex items-center gap-2">
@@ -121,15 +115,6 @@ export default function CoachNext({
           </button>
         )}
 
-        {diningTip && (
-          <p className="flex items-start gap-1.5 text-[12px] text-ink-dim leading-relaxed pt-0.5">
-            <UtensilsCrossed size={12} className="text-ink-faint shrink-0 mt-0.5" />
-            <span>
-              {diningTip.text}{" "}
-              <span className="text-ink-faint">({diningTip.source})</span>
-            </span>
-          </p>
-        )}
           </>
         )}
       </div>
