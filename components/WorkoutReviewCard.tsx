@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Flame } from "lucide-react"
 import { WORKOUT_META_BY_TYPE, type WorkoutType } from "@/lib/workoutMeta"
+import { workoutFallback } from "@/lib/workoutImageFallbacks"
 
 type Props = {
   imageUrl: string
@@ -63,14 +64,10 @@ export default function WorkoutReviewCard({
         )}
 
         <img
-          src={
-            imageUrl ||
-            "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
-          }
+          src={imageUrl || workoutFallback(workoutType)}
           onLoad={() => setImgLoaded(true)}
           onError={(e) => {
-            e.currentTarget.src =
-              "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
+            e.currentTarget.src = workoutFallback(workoutType)
             setImgLoaded(true)
           }}
           className="w-full h-[340px] object-cover transition-opacity duration-500"

@@ -4,12 +4,14 @@ import { getRouteUser, createServerSupabase } from "@/lib/supabaseServer"
 
 /**
  * GET /api/coach/workout?type=running&minutes=30&start=ISO&end=ISO
- * Workout coach: after a workout is logged, gives short recovery guidance
- * for the next meal — based on the workout AND what she's already eaten
- * today, so it never nags her to overeat.
+ * Fitness coach: after a workout is logged, it acknowledges the movement
+ * and opens the loop on TOMORROW's movement — the mirror of the food
+ * coach ("your next meal" → "how you'll move tomorrow").
  *
- * Shame-free and ED-sensitive by construction: everything is framed as
- * fueling recovery, never compensating, "earning" food, or eating less.
+ * Movement-first by design: food is demoted to a single quiet line, only
+ * when there's a genuine post-workout fuel gap. Rest is a first-class
+ * recommendation, short workouts count, and nothing is ever framed as
+ * calorie punishment or "making up for" anything.
  */
 function getAnthropic() {
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -48,15 +50,15 @@ const num = (v: unknown) => {
   return isNaN(n) ? 0 : Math.round(n * 10) / 10
 }
 
-// What kind of recovery each workout asks for.
-function recoveryFocus(type: string, minutes: number): "protein" | "carbs" | "balanced" {
-  if (type === "weightlifting") return "protein"
-  if (
-    (type === "running" || type === "cycling" || type === "swimming" || type === "hiit") &&
-    minutes >= 45
-  )
-    return "carbs"
-  return "balanced"
+type Intensity = "light" | "moderate" | "hard"
+
+/** How demanding a workout was — drives the recovery vs. nudge framing. */
+function intensity(type: string, minutes: number): Intensity {
+  if (type === "weightlifting" || type === "hiit" || type === "sports") return "hard"
+  if (type === "walking" || type === "yoga") return minutes >= 45 ? "moderate" : "light"
+  if (minutes >= 45) return "hard"
+  if (minutes < 20) return "light"
+  return "moderate"
 }
 
 const WORKOUT_LABELS: Record<string, string> = {
@@ -68,6 +70,10 @@ const WORKOUT_LABELS: Record<string, string> = {
   yoga: "yoga session",
   hiit: "HIIT session",
   sports: "game",
+}
+
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
 export async function GET(req: Request) {
@@ -87,8 +93,9 @@ export async function GET(req: Request) {
   }
 
   const supabase = await createServerSupabase()
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
-  const [{ data: meals }, { data: goalRows }, { data: recentMeals }] =
+  const [{ data: meals }, { data: goalRows }, { data: weekWorkouts }, { data: recentMeals }] =
     await Promise.all([
       supabase
         .from("meals")
@@ -104,6 +111,12 @@ export async function GET(req: Request) {
         .order("created_at", { ascending: false })
         .limit(1),
       supabase
+        .from("workouts")
+        .select("workout_type, duration_minutes, created_at")
+        .eq("user_id", user.id)
+        .gte("created_at", weekAgo)
+        .order("created_at", { ascending: false }),
+      supabase
         .from("meals")
         .select("ai_analysis")
         .eq("user_id", user.id)
@@ -113,28 +126,47 @@ export async function GET(req: Request) {
 
   const goals = goalRows?.[0] || { calories: 2000, protein: 150, carbs: 200, fat: 70 }
 
-  const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  let caloriesToday = 0
   for (const m of meals || []) {
     const ai =
       typeof m.ai_analysis === "string" ? JSON.parse(m.ai_analysis) : m.ai_analysis
-    totals.calories += num(ai?.calories)
-    totals.protein += num(ai?.protein)
-    totals.carbs += num(ai?.carbs)
-    totals.fat += num(ai?.fat)
-  }
-  for (const k of Object.keys(totals) as (keyof typeof totals)[]) {
-    totals[k] = Math.round(totals[k] * 10) / 10
+    caloriesToday += num(ai?.calories)
   }
 
-  const remaining = {
-    calories: Math.max(0, Math.round(goals.calories - totals.calories)),
-    protein: Math.max(0, Math.round((goals.protein - totals.protein) * 10) / 10),
-    carbs: Math.max(0, Math.round((goals.carbs - totals.carbs) * 10) / 10),
-    fat: Math.max(0, Math.round((goals.fat - totals.fat) * 10) / 10),
+  // --- Movement pattern over the last 7 days ---
+  const todayIntensity = intensity(type, minutes)
+  const byDay = new Map<string, Intensity[]>()
+  for (const w of weekWorkouts || []) {
+    const k = dayKey(new Date(w.created_at))
+    const list = byDay.get(k) || []
+    list.push(intensity(String(w.workout_type), Number(w.duration_minutes) || 0))
+    byDay.set(k, list)
+  }
+  const today = new Date()
+  let hardStreak = todayIntensity === "hard" ? 1 : 0
+  for (let back = 1; back < 7; back++) {
+    const d = new Date(today)
+    d.setDate(d.getDate() - back)
+    const list = byDay.get(dayKey(d)) || []
+    if (list.includes("hard")) hardStreak += 1
+    else break
+  }
+  let quietDays = 0
+  for (let back = 0; back < 7; back++) {
+    const d = new Date(today)
+    d.setDate(d.getDate() - back)
+    if (!(byDay.get(dayKey(d)) || []).length) quietDays += 1
   }
 
-  // Distinct meal names from recent history — so suggestions can reference
-  // foods she actually eats.
+  const mode: "rest" | "standard" = hardStreak >= 3 ? "rest" : "standard"
+
+  // Genuine fuel gap only: hard workout + clearly light eating day.
+  // Anything softer stays silent — the food coach owns food guidance.
+  const fuelGap =
+    todayIntensity === "hard" && caloriesToday < goals.calories * 0.7
+
+  // Distinct meal names from recent history — only used for the optional
+  // one-line food note, so it can name something she actually eats.
   const usual: string[] = []
   const seen = new Set<string>()
   for (const m of recentMeals || []) {
@@ -145,80 +177,58 @@ export async function GET(req: Request) {
     if (name && !seen.has(key)) {
       seen.add(key)
       usual.push(name)
-      if (usual.length >= 30) break
+      if (usual.length >= 20) break
     }
   }
 
   const workoutLabel = WORKOUT_LABELS[type] || "workout"
-  const focus = recoveryFocus(type, minutes)
-
-  // She's already eaten enough today to cover recovery — don't push more
-  // food. The client shows a quiet "you're covered" card instead. This also
-  // skips the model call entirely.
-  const covered =
-    remaining.protein <= Math.max(12, goals.protein * 0.15) &&
-    remaining.carbs <= Math.max(25, goals.carbs * 0.15) &&
-    remaining.fat <= Math.max(10, goals.fat * 0.15)
-  if (covered) {
-    return NextResponse.json({ tip: null, covered: true, workoutLabel, remaining })
-  }
 
   let tip: any = null
   try {
     const res = await getAnthropic().messages.create({
       model: TEXT_MODEL,
-      max_tokens: 400,
+      max_tokens: 300,
       messages: [
         {
           role: "user",
-          content: `You are a calm, encouraging nutrition coach inside a food-tracking app. The user just finished a ${minutes}-minute ${workoutLabel}. Based on the workout AND what she's eaten so far today versus her goals, give short recovery guidance for her next meal.
+          content: `You are a calm, encouraging fitness coach inside a food-tracking app. The user just finished a ${minutes}-minute ${workoutLabel} (${todayIntensity} intensity). Your job: acknowledge the movement, then open the loop on TOMORROW's movement — like a good coach would.
 
-CRITICAL — FOOD SENSITIVITY: she may have a complicated relationship with food. Never shame, scold, or moralize. Never label foods "good", "bad", "clean", "cheat", or "guilty". Never praise eating very little. Never suggest eating less, skipping meals, fasting, "earning" food, working out to burn off food, or "making up for" anything. Frame everything as fueling her recovery — what her body gets to have, not what it must pay back. Never do calorie math ("you burned X so eat X"). Every claim must come from the data below — never invent meals or numbers.
+CRITICAL — SENSITIVITY: she may have a complicated relationship with food and exercise. Never shame, scold, or moralize. Never praise or judge workout length, intensity, or calories burned — a short walk COUNTS. Never suggest working out to "burn off" food, "earn" food, or "make up for" anything. Never do calorie math. Never compare to yesterday or imply she should have done more. Rest is a legitimate, good recommendation. Every claim must come from the data below — never invent workouts or numbers.
 
 DATA:
-- Workout: ${minutes}-minute ${workoutLabel} (recovery priority: ${focus})
-- Daily goals: ${goals.calories} cal, ${goals.protein}g protein, ${goals.carbs}g carbs, ${goals.fat}g fat
-- Eaten so far today: ${totals.calories} cal, ${totals.protein}g protein, ${totals.carbs}g carbs, ${totals.fat}g fat
-- Remaining today: ${remaining.calories} cal, ${remaining.protein}g protein, ${remaining.carbs}g carbs, ${remaining.fat}g fat
-- Foods she eats often: ${usual.join("; ") || "unknown"}
+- Today: ${minutes}-minute ${workoutLabel} (${todayIntensity})
+- Pattern: ${hardStreak} hard day(s) in a row including today; ${quietDays} of the last 7 days had no workout
+- Mode: ${mode} ${mode === "rest" ? "(she's stacked hard days — rest or easy movement is the right call)" : ""}
+- Fuel gap: ${fuelGap ? "YES — hard workout on a light eating day" : "no"}
+${fuelGap ? `- Foods she eats often: ${usual.join("; ") || "unknown"}` : ""}
 
-TASK: Write like a friendly dietitian texting her — plain-spoken, warm, brief, zero judgment. Subtle, not coachy.
-- "headline": casual and short, like "a little protein will help those muscles recover". No hype, no exclamation marks. Never name a meal (no breakfast/lunch/dinner) — always say "next meal".
-- "detail": exactly one sentence, conversational. Tie it to recovery and how she'll feel (not sore tomorrow, steady energy), never to numbers. Never say she's "behind", "low", or "lacking" — just note what would help most now.
-- "suggestions": 3 specific, simple recovery-friendly foods or small meals — prefer her usual foods when they fit. Keep each under 5 words.
-- "hydration": one short, casual reminder to drink water (e.g. "get some water in too"). Keep it under 10 words.
-- The whole thing must read in 3 seconds. If what she's already eaten covers recovery well, say so warmly instead of pushing more food.
+TASK: Write like a friendly coach texting her — plain-spoken, warm, brief, zero judgment. No exclamation marks. The whole thing must read in 3 seconds.
+- "headline": acknowledge today's effort casually, e.g. "good lift" energy but in your own words. Short. If mode is rest, the headline should honor the work AND set up rest.
+- "tomorrow": ONE specific, small suggestion for tomorrow's movement. Recovery-aware: after a hard day suggest easy movement or full rest ("rest is the workout today" framing when mode is rest); after a light day, gently nudge something a touch more intentional tomorrow — but frame even a walk as a win ("walking helps recovery"). After quiet days, suggest the smallest possible re-entry. Never prescribe a workout plan.
+- "foodNote": ${fuelGap ? "ONE quiet line noting a little refuel would help recovery — name one of her usual foods if one fits, no numbers, no pressure." : "null — no food guidance today, the food coach owns that."}
 
 Return ONLY valid JSON, no markdown fences:
 {
-  "headline": "short, casual recovery guidance",
-  "focus": "protein" | "carbs" | "balanced",
-  "detail": "1-2 sentences on recovery; never name the meal — always say 'next meal'",
-  "suggestions": ["specific food 1", "specific food 2", "specific food 3"],
-  "hydration": "short water reminder"
+  "headline": "short, warm acknowledgment",
+  "tomorrow": "one specific small suggestion for tomorrow",
+  "foodNote": "one quiet line" | null
 }`,
         },
       ],
     })
     const text = res.content[0]?.type === "text" ? res.content[0].text : ""
     const parsed = extractJson(text)
-    if (parsed?.headline && Array.isArray(parsed?.suggestions)) {
+    if (parsed?.headline && parsed?.tomorrow) {
       tip = {
         headline: String(parsed.headline).slice(0, 120),
-        focus: ["protein", "carbs", "balanced"].includes(parsed.focus)
-          ? parsed.focus
-          : "balanced",
-        detail: String(parsed.detail || "").slice(0, 300),
-        suggestions: parsed.suggestions
-          .map((s: any) => String(s).slice(0, 80))
-          .filter(Boolean)
-          .slice(0, 3),
-        hydration: String(parsed.hydration || "").slice(0, 120) || null,
+        tomorrow: String(parsed.tomorrow).slice(0, 200),
+        foodNote:
+          fuelGap && parsed.foodNote ? String(parsed.foodNote).slice(0, 160) : null,
       }
     }
   } catch (err) {
     console.error("COACH WORKOUT FAILED:", err)
   }
 
-  return NextResponse.json({ tip, covered: false, workoutLabel, remaining })
+  return NextResponse.json({ tip, mode, workoutLabel })
 }

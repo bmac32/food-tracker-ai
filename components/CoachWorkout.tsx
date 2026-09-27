@@ -1,37 +1,33 @@
 "use client"
 
-import { Droplets, Sparkles, X } from "lucide-react"
-import type { CoachTip } from "./CoachNext"
+import { Sparkles, Sunrise, X } from "lucide-react"
 import { WORKOUT_TYPES, type WorkoutType } from "@/lib/workoutMeta"
 
-export type WorkoutCoachTip = CoachTip & {
-  hydration?: string | null
+export type WorkoutMoveTip = {
+  headline: string
+  tomorrow: string
+  foodNote?: string | null
 }
 
 /**
- * Workout coach card — appears right after a workout is saved with
- * recovery guidance for the next meal, based on the workout and what
- * she's already eaten today. A guide in the moment, not a post-mortem.
+ * Fitness coach card — appears right after a workout is saved.
+ * Movement-first: acknowledges the effort, then opens the loop on
+ * tomorrow's movement (the mirror of the food coach's "your next meal").
+ * Food is demoted to a single quiet line, only when there's a real gap.
  */
 export default function CoachWorkout({
   tip,
   workoutType,
-  covered,
+  followThrough,
   onClose,
 }: {
-  tip: WorkoutCoachTip
+  tip: WorkoutMoveTip
   workoutType: WorkoutType
-  covered?: boolean
+  followThrough?: string | null
   onClose: () => void
 }) {
   const label =
     WORKOUT_TYPES.find((w) => w.value === workoutType)?.label || "Workout"
-  const focusColor =
-    tip.focus === "protein"
-      ? "text-protein"
-      : tip.focus === "carbs"
-        ? "text-carb"
-        : "text-ink"
 
   return (
     <div className="relative bg-surface border border-hair rounded-[22px] p-4 overflow-hidden animate-fade-slide-up">
@@ -53,41 +49,25 @@ export default function CoachWorkout({
           </p>
         </div>
 
-        {covered ? (
-          <p className="text-[13px] text-ink-dim leading-relaxed pt-0.5">
-            You&apos;ve already eaten well today — that workout&apos;s fueled.
-            Just get some water in.
+        {followThrough && (
+          <p className="text-[12px] text-ink-faint leading-relaxed">
+            {followThrough}
           </p>
-        ) : (
-          <>
-            <h3 className={`text-[15px] font-bold tracking-tight ${focusColor}`}>
-              {tip.headline}
-            </h3>
+        )}
 
-            {tip.detail && (
-              <p className="text-[13px] text-ink-dim leading-relaxed">{tip.detail}</p>
-            )}
+        <h3 className="text-[15px] font-bold tracking-tight text-ink">
+          {tip.headline}
+        </h3>
 
-            {tip.suggestions.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-0.5">
-                {tip.suggestions.map((s, i) => (
-                  <span
-                    key={i}
-                    className="bg-surface-2 border border-hair rounded-full px-2.5 py-1 text-[11px] font-medium text-ink-dim"
-                  >
-                    {s}
-                  </span>
-                ))}
-              </div>
-            )}
+        <p className="flex items-start gap-1.5 text-[13px] text-ink-dim leading-relaxed">
+          <Sunrise size={13} className="shrink-0 mt-0.5 text-ink-faint" />
+          <span>{tip.tomorrow}</span>
+        </p>
 
-            {tip.hydration && (
-              <p className="flex items-center gap-1.5 text-[12px] text-ink-faint pt-1">
-                <Droplets size={12} className="shrink-0" />
-                {tip.hydration}
-              </p>
-            )}
-          </>
+        {tip.foodNote && (
+          <p className="text-[12px] text-ink-faint leading-relaxed pt-0.5">
+            {tip.foodNote}
+          </p>
         )}
       </div>
     </div>
