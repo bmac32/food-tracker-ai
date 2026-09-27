@@ -13,7 +13,7 @@ import DailySummary from "@/components/DailySummary"
 import MealFeed from "@/components/MealFeed"
 import MealReviewCard from "@/components/MealReviewCard"
 import CoachNext, { CoachTip } from "@/components/CoachNext"
-import CoachWorkout, { WorkoutCoachTip } from "@/components/CoachWorkout"
+import CoachWorkout, { WorkoutMoveTip } from "@/components/CoachWorkout"
 import FridgeSuggest, { FridgeSuggestion } from "@/components/FridgeSuggest"
 import UserInfo from "@/components/UserInfo"
 import WorkoutLogger from "@/components/WorkoutLogger"
@@ -77,9 +77,9 @@ export default function Home() {
     doneForDay?: boolean
   } | null>(null)
   const [coachWorkout, setCoachWorkout] = useState<{
-    tip: WorkoutCoachTip
+    tip: WorkoutMoveTip
     workoutType: WorkoutType
-    covered?: boolean
+    followThrough: string | null
   } | null>(null)
 
   // Continuous 0→1 scroll progress (not a hard threshold) so the header
@@ -514,11 +514,13 @@ export default function Home() {
   }
 
   // -------------------------
-  // 🏋️ WORKOUT COACH
+  // 🏋️ FITNESS COACH
   // -------------------------
-  // After a workout is saved, fetch recovery guidance. Skipped for past-day
-  // backfills. The suggestion is stored like the meal coach's, so the next
-  // logged meal gets the same quiet follow-through acknowledgment.
+  // After a workout is saved, fetch movement guidance. Skipped for past-day
+  // backfills. The card's "tomorrow" nudge is stored so the next logged
+  // workout gets a quiet follow-through acknowledgment — the movement
+  // mirror of the meal coach's loop.
+  const PENDING_MOVEMENT_KEY = "pendingMovementSuggestion"
   const handleWorkoutSaved = async (w?: {
     workoutType: WorkoutType
     durationMinutes: number
@@ -532,6 +534,20 @@ export default function Home() {
       today.getMonth() === viewing.getMonth() &&
       today.getDate() === viewing.getDate()
     if (!isToday || !w) return
+
+    // Follow-through: if the last card suggested moving and she just moved,
+    // acknowledge it quietly on the new card. One-shot, 48h expiry.
+    let followThrough: string | null = null
+    try {
+      const raw = localStorage.getItem(PENDING_MOVEMENT_KEY)
+      if (raw) {
+        const pending = JSON.parse(raw)
+        if (Date.now() - (pending.at || 0) < 48 * 60 * 60 * 1000) {
+          followThrough = "Nice — you got moving again."
+        }
+        localStorage.removeItem(PENDING_MOVEMENT_KEY)
+      }
+    } catch {}
 
     const start = new Date(viewing)
     start.setHours(0, 0, 0, 0)
@@ -547,34 +563,17 @@ export default function Home() {
       })
       const res = await fetch(`/api/coach/workout?${params.toString()}`)
       const json = await res.json()
-      // Already eaten enough to cover recovery — quiet closure, no food push.
-      if (json?.covered) {
-        setCoachWorkout({
-          tip: {
-            headline: "",
-            focus: "balanced",
-            detail: "",
-            suggestions: [],
-            hydration: null,
-          },
-          workoutType: w.workoutType,
-          covered: true,
-        })
-        return
-      }
       if (json?.tip) {
-        // The next logged meal gets checked against these remaining macros,
-        // same as the meal coach's follow-through loop.
         try {
           localStorage.setItem(
-            PENDING_SUGGESTION_KEY,
-            JSON.stringify({ remaining: json.remaining || {}, at: Date.now() })
+            PENDING_MOVEMENT_KEY,
+            JSON.stringify({ at: Date.now() })
           )
         } catch {}
         setCoachWorkout({
           tip: json.tip,
           workoutType: w.workoutType,
-          covered: false,
+          followThrough,
         })
       }
     } catch {
@@ -689,7 +688,7 @@ export default function Home() {
         <CoachWorkout
           tip={coachWorkout.tip}
           workoutType={coachWorkout.workoutType}
-          covered={coachWorkout.covered}
+          followThrough={coachWorkout.followThrough}
           onClose={() => setCoachWorkout(null)}
         />
       )}

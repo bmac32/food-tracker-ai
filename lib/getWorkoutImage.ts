@@ -1,31 +1,27 @@
 import { WORKOUT_META_BY_TYPE, type WorkoutType } from "./workoutMeta"
+import { workoutFallback } from "./workoutImageFallbacks"
 
 /**
- * Workout imagery — goes through our own /api/food-image proxy so the
- * Unsplash access key stays server-side (see app/api/food-image/route.ts).
- * The old NEXT_PUBLIC_UNSPLASH_ACCESS_KEY env var is no longer used;
- * set server-only UNSPLASH_ACCESS_KEY instead.
+ * Workout imagery — goes through our own /api/workout-image proxy so the
+ * Unsplash access key stays server-side. NEVER the food-image endpoint:
+ * that runs the dish learning loop and food fallbacks, which is how a
+ * workout once showed a food photo.
  */
 export async function getWorkoutImage(type: WorkoutType): Promise<string> {
   try {
     const query = WORKOUT_META_BY_TYPE[type]?.imageQuery || "workout fitness"
 
     const res = await fetch(
-      `/api/food-image?q=${encodeURIComponent(
-        query
-      )}&orientation=landscape`
+      `/api/workout-image?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}`
     )
 
-    if (!res.ok) return fallbackImage()
+    if (!res.ok) return workoutFallback(type)
 
     const data = await res.json()
-    return data.url || fallbackImage()
+    if (data.fallback || !data.url) return workoutFallback(type)
+    return data.url
   } catch (err) {
-    console.error("Unsplash workout image failed", err)
-    return fallbackImage()
+    console.error("Workout image failed", err)
+    return workoutFallback(type)
   }
-}
-
-function fallbackImage() {
-  return "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
 }

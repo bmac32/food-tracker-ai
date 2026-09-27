@@ -8,6 +8,7 @@ import {
   estimateCaloriesBurned,
   type WorkoutType,
 } from "@/lib/workoutMeta"
+import { workoutFallback } from "@/lib/workoutImageFallbacks"
 
 type Workout = {
   id: string
@@ -43,9 +44,14 @@ export default function WorkoutCard({
   const meta = WORKOUT_META_BY_TYPE[workout.workout_type]
   const Icon = meta?.icon || Flame
 
-  const imageSrc =
-    workout.photo_url ||
-    "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
+  // Rows saved before the workout-image fix may carry the old food-photo
+  // fallback URL — treat it as missing so the real workout fallback shows.
+  const KNOWN_FOOD_FALLBACK = "photo-1504674900247-0877df9cc836"
+  const storedUrl =
+    workout.photo_url && !workout.photo_url.includes(KNOWN_FOOD_FALLBACK)
+      ? workout.photo_url
+      : null
+  const imageSrc = storedUrl || workoutFallback(workout.workout_type)
 
   const startEditing = () => {
     setEditDuration(String(workout.duration_minutes))
