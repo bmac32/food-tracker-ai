@@ -5,6 +5,7 @@ import {
   underfuelLibraryText,
   getUnderfuelFact,
 } from "@/lib/underfuelGuidance"
+import { findRestaurantTip } from "@/lib/restaurantTips"
 
 /**
  * GET /api/coach/next?start=ISO&end=ISO&hour=13
@@ -52,6 +53,34 @@ const num = (v: unknown) => {
   return isNaN(n) ? 0 : Math.round(n * 10) / 10
 }
 
+// Reality-grounded suggestions (backlog #7): is a coach suggestion
+// actually something she eats? Fuzzy word-overlap match against her
+// history. If fewer than 2 of the 3 suggestions are grounded, the card
+// offers a fridge snap instead of guessing at dishes she may not have.
+const normWords = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+
+function suggestionGrounded(suggestion: string, usual: string[]): boolean {
+  const sWords = normWords(suggestion)
+  if (sWords.length === 0) return false
+  const sSet = new Set(sWords)
+  return usual.some((u) => {
+    const uWords = normWords(u)
+    if (uWords.length === 0) return false
+    const joined = uWords.join(" ")
+    const sJoined = sWords.join(" ")
+    if (sJoined.includes(joined) || joined.includes(sJoined)) return true
+    const overlap = uWords.filter((w) => w.length > 3 && sSet.has(w))
+    return uWords.length <= 2 ? overlap.length >= 1 : overlap.length >= 2
+  })
+}
+
 export async function GET(req: Request) {
   const { user, response } = await getRouteUser()
   if (!user) return response
@@ -85,7 +114,7 @@ export async function GET(req: Request) {
         .limit(1),
       supabase
         .from("meals")
-        .select("ai_analysis")
+        .select("ai_analysis, created_at")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(60),
@@ -117,6 +146,13 @@ export async function GET(req: Request) {
   // foods she actually eats.
   const usual: string[] = []
   const seen = new Set<string>()
+  // Recent meals by day (yesterday, day before) — for leftover-aware
+  // suggestions ("still have that beef stew from yesterday?").
+  const tzParam = params.get("tz") || "UTC"
+  const dayKey = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-CA", { timeZone: tzParam })
+  const todayKey = dayKey(new Date().toISOString())
+  const recentByDay = new Map<string, string[]>()
   for (const m of recentMeals || []) {
     const ai =
       typeof m.ai_analysis === "string" ? JSON.parse(m.ai_analysis) : m.ai_analysis
@@ -124,10 +160,29 @@ export async function GET(req: Request) {
     const key = name.toLowerCase()
     if (name && !seen.has(key)) {
       seen.add(key)
-      usual.push(name)
-      if (usual.length >= 30) break
+      if (usual.length < 30) usual.push(name)
+    }
+    if (name && m.created_at) {
+      const k = dayKey(m.created_at)
+      if (k !== todayKey) {
+        const arr = recentByDay.get(k) || []
+        if (!arr.some((n) => n.toLowerCase() === key) && arr.length < 6) {
+          arr.push(name)
+          recentByDay.set(k, arr)
+        }
+      }
     }
   }
+  const recentDayKeys = [...recentByDay.keys()].sort().reverse().slice(0, 2)
+  const recentMealsText =
+    recentDayKeys.length > 0
+      ? recentDayKeys
+          .map((k, i) => {
+            const label = i === 0 ? "yesterday" : "2 days ago"
+            return `${label}: ${(recentByDay.get(k) || []).join(", ")}`
+          })
+          .join("; ")
+      : "none logged"
 
   const remaining = {
     calories: Math.max(0, Math.round(goals.calories - totals.calories)),
@@ -267,12 +322,13 @@ DATA:
 - Remaining today: ${remaining.calories} cal, ${remaining.protein}g protein, ${remaining.carbs}g carbs, ${remaining.fat}g fat
 - Meals today: ${mealLines.join("; ")}
 - Foods she eats often: ${usual.join("; ") || "unknown"}
+- Recent meals: ${recentMealsText}
 
 TASK: Write like a friendly dietitian texting her — plain-spoken, warm, brief, zero judgment. Subtle, not coachy.
 - "headline": casual and short, like "grab some protein at your next meal". No hype, no exclamation marks. Never name a meal (no breakfast/lunch/dinner) — always say "next meal".
 - "detail": exactly one sentence, conversational. If relevant, tie it to how she'll feel (energy, hunger) rather than the numbers. Never say she's "behind", "low", or "lacking" — just note what she hasn't had much of yet. At most one number, ideally none.
-- "suggestions": 3 specific, simple foods or small meals that fill the gap — prefer her usual foods when they fit. Keep each under 5 words.
-- The whole thing must read in 3 seconds. If she's on track across the board, say so warmly in one line (e.g. "you're eating well today — keep doing what you're doing") with 3 easy, balanced suggestions.
+- "suggestions": 3 specific, simple foods or small meals that fill the gap. GROUND EVERY SUGGESTION IN HER HISTORY: use her usual foods and recent meals first. If a recent meal fits the gap, name it directly as a question — e.g. "still have that beef stew from yesterday?" Never suggest a dish with no basis in what she eats. Keep each under 8 words.
+- The whole thing must read in 3 seconds. If she's on track across the board, say so warmly in one line (e.g. "you're eating well today — keep doing what you're doing") with 3 easy, balanced suggestions from her history.
 
 Return ONLY valid JSON, no markdown fences:
 {
@@ -303,9 +359,28 @@ Return ONLY valid JSON, no markdown fences:
     console.error("COACH NEXT FAILED:", err)
   }
 
+  // Fridge action (backlog #7): when the model's suggestions aren't
+  // grounded in her history, don't guess — offer a fridge snap instead.
+  let fridgeAction = false
+  if (tip && Array.isArray(tip.suggestions) && tip.suggestions.length > 0) {
+    const groundedCount = tip.suggestions.filter((s: string) =>
+      suggestionGrounded(String(s), usual)
+    ).length
+    fridgeAction = groundedCount < 2
+  }
+
+  // Eating-out tip (backlog #7): one practical, cited line when today's
+  // meals look like restaurant food. Quiet, never preachy.
+  const diningHit = findRestaurantTip(mealLines)
+  const diningTip = diningHit
+    ? { text: diningHit.tip, source: diningHit.source }
+    : null
+
   return NextResponse.json({
     tip,
     underfuel,
+    fridgeAction,
+    diningTip,
     nextMeal,
     mealsLogged: mealLines.length,
     remaining,
