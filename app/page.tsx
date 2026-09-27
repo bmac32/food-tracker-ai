@@ -6,7 +6,7 @@ import { supabase } from "../lib/supabase"
 import { getSmartFoodImages, fallbackSet } from "@/lib/getSmartFoodImage"
 import { dishKey } from "@/lib/photoLearning"
 
-import { Sparkles, Dumbbell, Refrigerator } from "lucide-react"
+import { Sparkles, Dumbbell } from "lucide-react"
 
 import Upload from "@/components/Upload"
 import DailySummary from "@/components/DailySummary"
@@ -76,6 +76,8 @@ export default function Home() {
     nextMeal: string
     followThrough: string | null
     doneForDay?: boolean
+    fridgeAction?: boolean
+    diningTip?: { text: string; source: string } | null
   } | null>(null)
   const [coachWorkout, setCoachWorkout] = useState<{
     tip: WorkoutMoveTip
@@ -543,6 +545,8 @@ export default function Home() {
           tip: json.tip,
           nextMeal: json.nextMeal || "your next meal",
           followThrough,
+          fridgeAction: !!json.fridgeAction,
+          diningTip: json.diningTip || null,
         })
       }
     } catch {
@@ -717,6 +721,9 @@ export default function Home() {
           nextMeal={coachTip.nextMeal}
           followThrough={coachTip.followThrough}
           doneForDay={coachTip.doneForDay}
+          fridgeAction={coachTip.fridgeAction}
+          onFridgeSnap={() => setFridgeOpen(true)}
+          diningTip={coachTip.diningTip}
           onClose={() => setCoachTip(null)}
         />
       )}
@@ -782,24 +789,6 @@ export default function Home() {
                 uploadAndAnalyze(files)
               }}
             />
-
-            <button
-              onClick={() => {
-                setMealChooserOpen(false)
-                setFridgeOpen(true)
-              }}
-              className="group w-full flex items-center gap-3 bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-carb/40 active:scale-[0.98]"
-            >
-              <span className="w-8 h-8 rounded-full bg-gradient-to-br from-carb to-protein flex items-center justify-center shrink-0 transition-transform duration-300 ease-spring group-active:rotate-12">
-                <Refrigerator size={15} className="text-ground" />
-              </span>
-              <span className="text-left">
-                <span className="block">Snap your fridge</span>
-                <span className="block text-xs font-normal text-ink-faint mt-0.5">
-                  Get meal ideas that close today's gaps
-                </span>
-              </span>
-            </button>
 
             <button
               onClick={() => {
