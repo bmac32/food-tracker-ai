@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { getRouteUser, createServerSupabase } from "@/lib/supabaseServer"
+import {
+  underfuelLibraryText,
+  getUnderfuelFact,
+} from "@/lib/underfuelGuidance"
 
 /**
  * GET /api/coach/next?start=ISO&end=ISO&hour=13
@@ -153,6 +157,98 @@ export async function GET(req: Request) {
     })
   }
 
+  // --- Under-fueling pattern (backlog #10) ---
+  // Multi-day pattern only — never a single light day. A day counts if at
+  // least one meal was logged (untracked days aren't evidence of anything).
+  // Fires when 4+ of the last 7 logged days came in under 80% of the calorie
+  // goal. The client only asks for this when its local cooldown expired, so
+  // at most one extra model call per card shown.
+  const UNDER_DAYS_REQUIRED = 4
+  const UNDER_DAY_RATIO = 0.8
+  let underfuel: { headline: string; body: string; source: string } | null = null
+  if (params.get("underfuelEligible") === "1") {
+    const weekEnd = new Date(end)
+    const weekStart = new Date(weekEnd)
+    weekStart.setDate(weekStart.getDate() - 6)
+    weekStart.setHours(0, 0, 0, 0)
+    const { data: weekMeals } = await supabase
+      .from("meals")
+      .select("ai_analysis, created_at")
+      .eq("user_id", user.id)
+      .gte("created_at", weekStart.toISOString())
+      .lte("created_at", weekEnd.toISOString())
+
+    const tz = params.get("tz") || "UTC"
+    const dayKey = (iso: string) =>
+      new Date(iso).toLocaleDateString("en-CA", { timeZone: tz })
+    const calsByDay = new Map<string, number>()
+    const mealsByDay = new Map<string, number>()
+    for (const m of weekMeals || []) {
+      const ai =
+        typeof m.ai_analysis === "string" ? JSON.parse(m.ai_analysis) : m.ai_analysis
+      const k = dayKey(m.created_at)
+      calsByDay.set(k, (calsByDay.get(k) || 0) + num(ai?.calories))
+      mealsByDay.set(k, (mealsByDay.get(k) || 0) + 1)
+    }
+    let loggedDays = 0
+    let underDays = 0
+    for (const [k, cals] of calsByDay) {
+      if ((mealsByDay.get(k) || 0) < 1) continue
+      loggedDays++
+      if (cals < goals.calories * UNDER_DAY_RATIO) underDays++
+    }
+
+    if (underDays >= UNDER_DAYS_REQUIRED) {
+      try {
+        const res = await getAnthropic().messages.create({
+          model: TEXT_MODEL,
+          max_tokens: 300,
+          messages: [
+            {
+              role: "user",
+              content: `You are a calm, encouraging nutrition coach inside a food-tracking app. You've noticed a multi-day pattern: she's been eating well under her body's needs on most days this week.
+
+CRITICAL — FOOD SENSITIVITY: she may have a complicated relationship with food. This must NEVER read as an accusation or a lecture. Never say "you're not eating enough" as a verdict. Never prescribe calories or command her to eat more. Never moralize, never mention weight. Frame it as a curious observation plus one useful, honest fact — and leave her room.
+
+STRICT FACT RULE: below is a small library of dietitian-vetted facts, each with an id. You may ONLY use these facts, rewritten in your own warm words. Do not invent mechanisms, numbers, or claims. Do not lead with a slowing metabolism — fact F4 explains why.
+
+LIBRARY:
+${underfuelLibraryText()}
+
+DATA:
+- Pattern: ${underDays} of the last ${loggedDays} logged days came in under 80% of her ${goals.calories}-calorie goal.
+- Her goal: ${goals.calories} cal/day.
+
+TASK: Write like a thoughtful dietitian texting her — plain-spoken, warm, brief, zero judgment. No exclamation marks.
+- "headline": the honest take in 12 words or fewer, framed as an observation, never a verdict.
+- "body": exactly 2 sentences. Sentence 1: name the pattern gently and get curious (e.g. how her energy or sleep has been). Sentence 2: ONE library fact, rewritten warmly and tied to how she feels or functions (energy, strength, sleep, mood) — never to weight or numbers. End invitational, never prescriptive.
+- "factId": the id of the single library fact you used.
+
+Return ONLY valid JSON, no markdown fences:
+{
+  "headline": "short, warm observation",
+  "body": "sentence one. sentence two.",
+  "factId": "F1"
+}`,
+            },
+          ],
+        })
+        const text = res.content[0]?.type === "text" ? res.content[0].text : ""
+        const parsed = extractJson(text)
+        const fact = getUnderfuelFact(String(parsed?.factId || ""))
+        if (parsed?.headline && parsed?.body && fact) {
+          underfuel = {
+            headline: String(parsed.headline).slice(0, 120),
+            body: String(parsed.body).slice(0, 400),
+            source: fact.source,
+          }
+        }
+      } catch (err) {
+        console.error("COACH UNDERFUEL FAILED:", err)
+      }
+    }
+  }
+
   let tip: any = null
   try {
     const res = await getAnthropic().messages.create({
@@ -207,5 +303,11 @@ Return ONLY valid JSON, no markdown fences:
     console.error("COACH NEXT FAILED:", err)
   }
 
-  return NextResponse.json({ tip, nextMeal, mealsLogged: mealLines.length, remaining })
+  return NextResponse.json({
+    tip,
+    underfuel,
+    nextMeal,
+    mealsLogged: mealLines.length,
+    remaining,
+  })
 }

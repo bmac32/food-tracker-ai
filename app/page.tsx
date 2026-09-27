@@ -14,6 +14,7 @@ import MealFeed from "@/components/MealFeed"
 import MealReviewCard from "@/components/MealReviewCard"
 import CoachNext, { CoachTip } from "@/components/CoachNext"
 import CoachWorkout, { WorkoutMoveTip } from "@/components/CoachWorkout"
+import CoachUnderfuel, { UnderfuelCard } from "@/components/CoachUnderfuel"
 import FridgeSuggest, { FridgeSuggestion } from "@/components/FridgeSuggest"
 import UserInfo from "@/components/UserInfo"
 import WorkoutLogger from "@/components/WorkoutLogger"
@@ -81,6 +82,9 @@ export default function Home() {
     workoutType: WorkoutType
     followThrough: string | null
   } | null>(null)
+  // Under-fueling opinion card (backlog #10) — replaces the normal tip on
+  // the save where the pattern fires, at most once per 7 days.
+  const [underfuelCard, setUnderfuelCard] = useState<UnderfuelCard | null>(null)
 
   // Continuous 0→1 scroll progress (not a hard threshold) so the header
   // collapses in lockstep with the scroll, like iOS's large-title behavior,
@@ -452,6 +456,9 @@ export default function Home() {
     }
   }
 
+  const UNDERFUEL_KEY = "underfuel:lastShown"
+  const UNDERFUEL_COOLDOWN_MS = 7 * 24 * 3600 * 1000
+
   const fetchCoachTip = async () => {
     // Only for today — backfilling a past day doesn't need "next meal" advice.
     const today = new Date()
@@ -474,17 +481,32 @@ export default function Home() {
       localStorage.removeItem(PENDING_SUGGESTION_KEY)
     } catch {}
 
+    // Under-fueling pattern (backlog #10): eligible at most once per 7 days.
+    // The server only builds the card when asked, so no wasted model calls.
+    let underfuelEligible = "0"
+    try {
+      const last = Number(localStorage.getItem(UNDERFUEL_KEY) || 0)
+      if (!last || Date.now() - last > UNDERFUEL_COOLDOWN_MS) underfuelEligible = "1"
+    } catch {}
+    let tz = "UTC"
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+    } catch {}
+
     try {
       const params = new URLSearchParams({
         start: start.toISOString(),
         end: end.toISOString(),
         hour: String(new Date().getHours()),
+        underfuelEligible,
+        tz,
       })
       const res = await fetch(`/api/coach/next?${params.toString()}`)
       const json = await res.json()
       // Done for the day: no more "next meal" push — just closure (plus
       // any follow-through ack above). The tip itself is skipped.
       if (json?.doneForDay) {
+        setUnderfuelCard(null)
         setCoachTip({
           tip: { headline: "", focus: "balanced", detail: "", suggestions: [] },
           nextMeal: "",
@@ -493,6 +515,21 @@ export default function Home() {
         })
         return
       }
+      // Under-fueling opinion: replaces the normal tip on this save. The
+      // cooldown is stamped on show, so the X is a 7-day snooze.
+      if (json?.underfuel && underfuelEligible === "1") {
+        try {
+          localStorage.setItem(UNDERFUEL_KEY, String(Date.now()))
+          localStorage.setItem(
+            PENDING_SUGGESTION_KEY,
+            JSON.stringify({ remaining: json.remaining || {}, at: Date.now() })
+          )
+        } catch {}
+        setCoachTip(null)
+        setUnderfuelCard(json.underfuel)
+        return
+      }
+      setUnderfuelCard(null)
       if (json?.tip) {
         // Remember the remaining macros; the NEXT logged meal gets checked
         // against all of them. Expires with the next meal either way.
@@ -681,6 +718,13 @@ export default function Home() {
           followThrough={coachTip.followThrough}
           doneForDay={coachTip.doneForDay}
           onClose={() => setCoachTip(null)}
+        />
+      )}
+
+      {underfuelCard && !analysis && (
+        <CoachUnderfuel
+          card={underfuelCard}
+          onClose={() => setUnderfuelCard(null)}
         />
       )}
 
