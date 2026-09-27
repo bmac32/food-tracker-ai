@@ -15,7 +15,11 @@ import WorkoutReviewCard from "./WorkoutReviewCard"
 type Props = {
   open: boolean
   onClose: () => void
-  onSaved: () => void
+  onSaved: (workout?: {
+    workoutType: WorkoutType
+    durationMinutes: number
+    calories: number
+  }) => void
   currentDate: Date
 }
 
@@ -116,8 +120,13 @@ export default function WorkoutLogger({ open, onClose, onSaved, currentDate }: P
 
       setSaveSuccess(true)
 
+      const savedWorkout = {
+        workoutType,
+        durationMinutes: Math.round(parseFloat(duration)),
+        calories,
+      }
       setTimeout(() => {
-        onSaved()
+        onSaved(savedWorkout)
         onClose()
       }, 1000)
     } catch (err) {
