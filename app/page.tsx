@@ -13,9 +13,11 @@ import DailySummary from "@/components/DailySummary"
 import MealFeed from "@/components/MealFeed"
 import MealReviewCard from "@/components/MealReviewCard"
 import CoachNext, { CoachTip } from "@/components/CoachNext"
+import CoachWorkout, { WorkoutCoachTip } from "@/components/CoachWorkout"
 import FridgeSuggest, { FridgeSuggestion } from "@/components/FridgeSuggest"
 import UserInfo from "@/components/UserInfo"
 import WorkoutLogger from "@/components/WorkoutLogger"
+import type { WorkoutType } from "@/lib/workoutMeta"
 
 type Analysis = {
   meal_name: string
@@ -73,6 +75,11 @@ export default function Home() {
     nextMeal: string
     followThrough: string | null
     doneForDay?: boolean
+  } | null>(null)
+  const [coachWorkout, setCoachWorkout] = useState<{
+    tip: WorkoutCoachTip
+    workoutType: WorkoutType
+    covered?: boolean
   } | null>(null)
 
   // Continuous 0→1 scroll progress (not a hard threshold) so the header
@@ -507,6 +514,75 @@ export default function Home() {
   }
 
   // -------------------------
+  // 🏋️ WORKOUT COACH
+  // -------------------------
+  // After a workout is saved, fetch recovery guidance. Skipped for past-day
+  // backfills. The suggestion is stored like the meal coach's, so the next
+  // logged meal gets the same quiet follow-through acknowledgment.
+  const handleWorkoutSaved = async (w?: {
+    workoutType: WorkoutType
+    durationMinutes: number
+    calories: number
+  }) => {
+    setRefreshFeed((prev) => prev + 1)
+    const today = new Date()
+    const viewing = new Date(currentDate)
+    const isToday =
+      today.getFullYear() === viewing.getFullYear() &&
+      today.getMonth() === viewing.getMonth() &&
+      today.getDate() === viewing.getDate()
+    if (!isToday || !w) return
+
+    const start = new Date(viewing)
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(viewing)
+    end.setHours(23, 59, 59, 999)
+
+    try {
+      const params = new URLSearchParams({
+        type: w.workoutType,
+        minutes: String(w.durationMinutes),
+        start: start.toISOString(),
+        end: end.toISOString(),
+      })
+      const res = await fetch(`/api/coach/workout?${params.toString()}`)
+      const json = await res.json()
+      // Already eaten enough to cover recovery — quiet closure, no food push.
+      if (json?.covered) {
+        setCoachWorkout({
+          tip: {
+            headline: "",
+            focus: "balanced",
+            detail: "",
+            suggestions: [],
+            hydration: null,
+          },
+          workoutType: w.workoutType,
+          covered: true,
+        })
+        return
+      }
+      if (json?.tip) {
+        // The next logged meal gets checked against these remaining macros,
+        // same as the meal coach's follow-through loop.
+        try {
+          localStorage.setItem(
+            PENDING_SUGGESTION_KEY,
+            JSON.stringify({ remaining: json.remaining || {}, at: Date.now() })
+          )
+        } catch {}
+        setCoachWorkout({
+          tip: json.tip,
+          workoutType: w.workoutType,
+          covered: false,
+        })
+      }
+    } catch {
+      // Silent — the card just doesn't appear.
+    }
+  }
+
+  // -------------------------
   // 👎 PHOTO FEEDBACK
   // -------------------------
   const recordPhotoVerdict = (
@@ -606,6 +682,15 @@ export default function Home() {
           followThrough={coachTip.followThrough}
           doneForDay={coachTip.doneForDay}
           onClose={() => setCoachTip(null)}
+        />
+      )}
+
+      {coachWorkout && !analysis && (
+        <CoachWorkout
+          tip={coachWorkout.tip}
+          workoutType={coachWorkout.workoutType}
+          covered={coachWorkout.covered}
+          onClose={() => setCoachWorkout(null)}
         />
       )}
 
@@ -829,7 +914,7 @@ export default function Home() {
       <WorkoutLogger
         open={workoutLoggerOpen}
         onClose={() => setWorkoutLoggerOpen(false)}
-        onSaved={() => setRefreshFeed((prev) => prev + 1)}
+        onSaved={handleWorkoutSaved}
         currentDate={currentDate}
       />
 
