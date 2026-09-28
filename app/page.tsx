@@ -275,6 +275,77 @@ export default function Home() {
   }
 
   // -------------------------
+  // 👆 ONE-TAP SUGGESTION LOGGING (backlog #11)
+  // A tapped coach suggestion becomes a pending meal: the suggestion text is
+  // analyzed like a typed meal (truth pipeline included, "~" stays honest),
+  // then the normal review card opens pre-filled — photo optional, amounts
+  // editable, one tap to log.
+  // -------------------------
+  const logSuggestion = async (suggestion: string) => {
+    if (!suggestion.trim() || analyzing) return
+
+    setAnalyzing(true)
+    setAnalysisError(null)
+
+    try {
+      const res = await fetch("/api/meals/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: suggestion.trim() }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok || data?.error) {
+        setAnalysisError(
+          data?.error || "Couldn't prepare that suggestion — please try again."
+        )
+        return
+      }
+
+      const foods =
+        data?.foods?.length > 0
+          ? data.foods.map((f: any) =>
+              typeof f === "string" ? f : f?.item || "food"
+            )
+          : [suggestion.trim()]
+
+      const parsedAnalysis = {
+        meal_name: data?.meal_name || suggestion.trim(),
+        foods,
+        food_items: Array.isArray(data?.food_items)
+          ? data.food_items
+          : undefined,
+        image_query: data?.image_query || "",
+        calories: data?.calories ?? 200,
+        protein: data?.protein ?? 5,
+        carbs: data?.carbs ?? 30,
+        fat: data?.fat ?? 5,
+        logged_from: "suggestion",
+      }
+
+      const imageUrls = await getSmartFoodImages(
+        parsedAnalysis.meal_name,
+        parsedAnalysis.foods,
+        {
+          imageQuery: parsedAnalysis.image_query,
+          dishKey: dishKey(parsedAnalysis.meal_name, parsedAnalysis.foods),
+        }
+      )
+
+      setPhotoUrls(imageUrls)
+      setPhotoIndex(0)
+      setIsUserPhoto(false)
+      setAnalysis(parsedAnalysis)
+    } catch (err) {
+      console.error("SUGGESTION LOG FAILED:", err)
+      setAnalysisError("Couldn't prepare that suggestion — please try again.")
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  // -------------------------
   // 🧊 FRIDGE SUGGESTION → REVIEW FLOW
   // A chosen fridge suggestion becomes a pending meal: it goes through
   // the same review card (photo picker, editable ingredients) and the
@@ -753,6 +824,7 @@ export default function Home() {
           closureNote={coachTip.closureNote}
           fridgeAction={coachTip.fridgeAction}
           onFridgeSnap={() => setFridgeOpen(true)}
+          onLogSuggestion={logSuggestion}
           onClose={() => setCoachTip(null)}
         />
       )}

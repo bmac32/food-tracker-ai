@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { ChevronDown, ChartPie, Pencil, Check } from "lucide-react"
 
 // Collapsible "where your macros come from" breakdown. Read-only and
@@ -21,6 +21,10 @@ export type PortionShareItem = {
   grams?: number
   /** "yours" | "usda" | "ai" — drives the honest "~" on estimates. */
   source?: string
+  /** "hers" once she confirms the portion — until then the AI guessed it. */
+  gramsSource?: string
+  /** Per-100g reference values when known (USDA / her correction). */
+  per100?: { protein: number; carbs: number; fat: number } | null
 }
 
 export type TeachMacros = { protein: number; carbs: number; fat: number }
@@ -30,11 +34,14 @@ type Props = {
   className?: string
   /** Show the teach affordance on rows that have a known serving size. */
   teachable?: boolean
-  /** Called after the correction is saved; caller updates its own state. */
+  /** Called after the correction is saved; caller updates its own state.
+   *  gramsConfirmed is true only when she actually touched the amount field —
+   *  an untouched AI portion stays an estimate even after a macro correction. */
   onTeach?: (
     item: string,
     grams: number,
-    macros: TeachMacros
+    macros: TeachMacros,
+    gramsConfirmed: boolean
   ) => Promise<void>
 }
 
@@ -54,6 +61,7 @@ const SEGMENT_COLORS = [
 ]
 
 const calsOf = (p: number, c: number, f: number) => p * 4 + c * 4 + f * 9
+const r1 = (n: number) => Math.round(n * 10) / 10
 
 export default function PortionBalance({
   items,
@@ -66,14 +74,22 @@ export default function PortionBalance({
   // Teach-the-app editor state.
   const [teaching, setTeaching] = useState<number | null>(null)
   const [draft, setDraft] = useState<TeachMacros>({ protein: 0, carbs: 0, fat: 0 })
+  const [draftGrams, setDraftGrams] = useState(0)
+  const [gramsDirty, setGramsDirty] = useState(false)
+  // Grams the draft macros were last scaled from — rescaling is always
+  // relative to the previous draft, never compounded off the original.
+  const scaledFromRef = useRef(0)
   const [savingTeach, setSavingTeach] = useState(false)
   const [taught, setTaught] = useState<string | null>(null)
 
   if (!items || items.length === 0) return null
 
-  const isEstimated = (source?: string) =>
-    source !== "yours" && source !== "usda"
-  const anyEstimated = items.some((it) => isEstimated(it.source))
+  // Honest "~": a number is exact only when the per-100g values AND the
+  // portion are both trusted. The AI's portion guess keeps the "~" even
+  // on USDA-backed items — she clears it by confirming the amount.
+  const isEstimated = (it: PortionShareItem) =>
+    (it.source !== "yours" && it.source !== "usda") || it.gramsSource !== "hers"
+  const anyEstimated = items.some(isEstimated)
   const canTeach = (it: PortionShareItem) =>
     teachable && !!onTeach && (it.grams ?? 0) > 0
 
@@ -84,22 +100,58 @@ export default function PortionBalance({
       carbs: Math.round(it.carbs * 10) / 10,
       fat: Math.round(it.fat * 10) / 10,
     })
+    setDraftGrams(it.grams ?? 0)
+    scaledFromRef.current = it.grams ?? 0
+    setGramsDirty(false)
     setTeaching(index)
     setTaught(null)
+  }
+
+  // Changing the amount rescales the macros live: from per-100g values when
+  // known, otherwise proportionally from the previous draft amount.
+  const changeGrams = (g: number) => {
+    if (teaching === null) return
+    const grams = Math.max(0, g || 0)
+    const it = items[teaching]
+    const from = scaledFromRef.current
+    setDraftGrams(grams)
+    setGramsDirty(true)
+    if (it.per100 && grams > 0) {
+      const k = grams / 100
+      setDraft({
+        protein: r1(it.per100.protein * k),
+        carbs: r1(it.per100.carbs * k),
+        fat: r1(it.per100.fat * k),
+      })
+      scaledFromRef.current = grams
+    } else if (from > 0 && grams > 0) {
+      const k = grams / from
+      setDraft((d) => ({
+        protein: r1(d.protein * k),
+        carbs: r1(d.carbs * k),
+        fat: r1(d.fat * k),
+      }))
+      scaledFromRef.current = grams
+    }
   }
 
   const saveTeaching = async () => {
     if (teaching === null || !onTeach) return
     const it = items[teaching]
-    const grams = it.grams ?? 0
+    const grams = draftGrams > 0 ? draftGrams : it.grams ?? 0
     if (grams <= 0) return
     setSavingTeach(true)
     try {
-      await onTeach(it.item, grams, {
-        protein: Math.max(0, draft.protein || 0),
-        carbs: Math.max(0, draft.carbs || 0),
-        fat: Math.max(0, draft.fat || 0),
-      })
+      await onTeach(
+        it.item,
+        grams,
+        {
+          protein: Math.max(0, draft.protein || 0),
+          carbs: Math.max(0, draft.carbs || 0),
+          fat: Math.max(0, draft.fat || 0),
+        },
+        gramsDirty
+      )
       setTaught(it.item)
     } finally {
       setSavingTeach(false)
@@ -228,9 +280,25 @@ export default function PortionBalance({
                         Teach the app about {it.item}
                       </p>
                       <p className="text-[11px] text-ink-faint mt-0.5 mb-2">
-                        {isEstimated(it.source) ? "This was an estimate (~). " : ""}
+                        {isEstimated(it) ? "This was an estimate (~). " : ""}
                         What should I remember for next time?
                       </p>
+                      <label className="block mb-2">
+                        <span className="block text-[10px] text-ink-faint mb-1">
+                          Amount (g){it.gramsSource !== "hers" ? " — the AI guessed this" : ""}
+                        </span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          step="any"
+                          value={draftGrams || ""}
+                          placeholder={String(it.grams ?? 0)}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => changeGrams(Number(e.target.value))}
+                          className="w-full bg-ground border border-hair rounded-lg px-2 py-1.5 text-xs text-ink tabular-nums outline-none transition focus:border-ink/40"
+                        />
+                      </label>
                       <div className="flex gap-2">
                         {(
                           [
@@ -241,7 +309,7 @@ export default function PortionBalance({
                         ).map(([key, label]) => (
                           <label key={key} className="flex-1">
                             <span className="block text-[10px] text-ink-faint mb-1">
-                              {isEstimated(it.source) ? "~" : ""}
+                              {isEstimated(it) ? "~" : ""}
                               {label} (g)
                             </span>
                             <input
@@ -250,6 +318,7 @@ export default function PortionBalance({
                               min={0}
                               step="any"
                               value={draft[key]}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) =>
                                 setDraft((d) => ({
                                   ...d,
@@ -286,8 +355,8 @@ export default function PortionBalance({
           {/* honesty footnote — explains the "~" and teaches the gesture */}
           {teachable && anyEstimated && (
             <p className="text-[10px] text-ink-faint pt-2 leading-relaxed">
-              Numbers marked ~ are estimates. Tap any food to teach the app,
-              and it will remember.
+              Numbers marked ~ are estimates. Tap any food to teach the app
+              its macros and portion, and it will remember.
             </p>
           )}
         </div>

@@ -4,7 +4,8 @@ import { normalizeFoodKey } from "@/lib/foodTruth"
 
 /**
  * PATCH /api/meals/[id] — apply a food correction to an already-saved meal.
- * Body: { item, protein, carbs, fat } (serving-level macros for that item).
+ * Body: { item, protein, carbs, fat, grams?, gramsConfirmed? } (serving-level
+ * macros for that item; grams + gramsConfirmed when she also set the portion).
  * Rewrites the item inside ai_analysis and recomputes the meal totals, so
  * a correction made from the feed fixes that meal too — not just the future.
  */
@@ -64,6 +65,9 @@ export async function PATCH(
       it.carbs = r1(Number(body.carbs) || 0)
       it.fat = r1(Number(body.fat) || 0)
       it.source = "yours"
+      const g = Number(body.grams)
+      if (g > 0) it.grams = r1(g)
+      if (body.gramsConfirmed === true) it.gramsSource = "hers"
       found = true
     }
     protein += Number(it.protein) || 0
@@ -82,7 +86,12 @@ export async function PATCH(
   ai.carbs = carbs
   ai.fat = fat
   ai.calories = Math.round(protein * 4 + carbs * 4 + fat * 9)
-  ai.estimated = items.some((it: any) => it.source === "ai")
+  // Honest "~": per-100g values AND the portion must both be trusted.
+  ai.estimated = items.some(
+    (it: any) =>
+      (it.source !== "yours" && it.source !== "usda") ||
+      it.gramsSource !== "hers"
+  )
 
   const { error: updateError } = await supabase
     .from("meals")

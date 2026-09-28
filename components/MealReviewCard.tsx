@@ -16,6 +16,8 @@ type FoodItem = {
   fat: number
   per100: { protein: number; carbs: number; fat: number } | null
   source?: string
+  /** "hers" once she confirms the portion — until then the AI guessed it. */
+  gramsSource?: string
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10
@@ -36,6 +38,8 @@ function toFoodItems(analysis: any): FoodItem[] {
           }
         : null,
       source: typeof f.source === "string" ? f.source : undefined,
+      gramsSource:
+        typeof f.gramsSource === "string" ? f.gramsSource : undefined,
     }))
   }
   // Legacy analyses: names only, no portion data.
@@ -118,20 +122,64 @@ export default function MealReviewCard({
     setItems((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleAdd = () => {
-    if (!newFood.trim()) return
-    setItems((prev) => [
-      ...prev,
-      {
-        item: newFood.trim(),
-        grams: 0,
-        protein: 0,
-        carbs: 0,
-        fat: 0,
-        per100: null,
-      },
-    ])
-    setNewFood("")
+  const [addingFood, setAddingFood] = useState(false)
+
+  // Added ingredients go through the same truth pipeline as the analysis
+  // (her correction -> USDA -> AI estimate) instead of landing as blank
+  // rows — so they show up in portions and totals, marked "~" like the rest.
+  const handleAdd = async () => {
+    if (!newFood.trim() || addingFood) return
+    const name = newFood.trim()
+    setAddingFood(true)
+    const blank = (): FoodItem => ({
+      item: name,
+      grams: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      per100: null,
+      source: "ai",
+      gramsSource: "ai",
+    })
+    try {
+      const res = await fetch("/api/meals/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: name }),
+      })
+      const data = await res.json().catch(() => null)
+      const resolved = Array.isArray(data?.food_items) ? data.food_items : []
+      if (!res.ok || resolved.length === 0) {
+        setItems((prev) => [...prev, blank()])
+      } else {
+        setItems((prev) => [
+          ...prev,
+          ...resolved.map(
+            (f: any): FoodItem => ({
+              item: String(f.item || name).trim(),
+              grams: Number(f.grams) || 0,
+              protein: Number(f.protein) || 0,
+              carbs: Number(f.carbs) || 0,
+              fat: Number(f.fat) || 0,
+              per100: f.per100
+                ? {
+                    protein: Number(f.per100.protein) || 0,
+                    carbs: Number(f.per100.carbs) || 0,
+                    fat: Number(f.per100.fat) || 0,
+                  }
+                : null,
+              source: typeof f.source === "string" ? f.source : "ai",
+              gramsSource: "ai",
+            })
+          ),
+        ])
+      }
+    } catch {
+      setItems((prev) => [...prev, blank()])
+    } finally {
+      setAddingFood(false)
+      setNewFood("")
+    }
   }
 
   // Teach-the-app: save the correction as this food's truth (remembered
@@ -139,7 +187,8 @@ export default function MealReviewCard({
   const handleTeach = async (
     item: string,
     grams: number,
-    macros: TeachMacros
+    macros: TeachMacros,
+    gramsConfirmed: boolean
   ) => {
     const res = await fetch("/api/food-corrections", {
       method: "POST",
@@ -153,24 +202,41 @@ export default function MealReviewCard({
       }),
     })
     if (!res.ok) throw new Error("Couldn't save the correction.")
+    // The corrected per-100g values, so the portion bar rescales correctly.
+    const per100 =
+      grams > 0
+        ? {
+            protein: r1((macros.protein * 100) / grams),
+            carbs: r1((macros.carbs * 100) / grams),
+            fat: r1((macros.fat * 100) / grams),
+          }
+        : null
     setItems((prev) =>
       prev.map((it) =>
         it.item === item
           ? {
               ...it,
+              grams: grams > 0 ? r1(grams) : it.grams,
               protein: macros.protein,
               carbs: macros.carbs,
               fat: macros.fat,
+              per100: per100 ?? it.per100,
               source: "yours",
+              // Only a portion she actually touched counts as hers — an
+              // untouched AI guess stays an estimate even after a correction.
+              gramsSource: gramsConfirmed ? "hers" : it.gramsSource,
             }
           : it
       )
     )
   }
 
-  // Honest "~": any item that is still an AI guess makes the totals estimates.
+  // Honest "~": a total is exact only when every item's per-100g values
+  // AND its portion are both trusted. The analyzer's portion is always a
+  // guess until she confirms it in the teach editor's amount field.
   const estimated = items.some(
-    (i) => i.source !== "yours" && i.source !== "usda"
+    (i) =>
+      (i.source !== "yours" && i.source !== "usda") || i.gramsSource !== "hers"
   )
 
   const handleSave = async () => {
@@ -292,9 +358,10 @@ export default function MealReviewCard({
             />
             <button
               onClick={handleAdd}
-              className="px-3 py-2 bg-surface-2 text-ink rounded-lg text-xs transition-all duration-150 ease-spring hover:bg-white/10 active:scale-[0.97]"
+              disabled={addingFood}
+              className="px-3 py-2 bg-surface-2 text-ink rounded-lg text-xs transition-all duration-150 ease-spring hover:bg-white/10 active:scale-[0.97] disabled:opacity-50"
             >
-              Add
+              {addingFood ? "…" : "Add"}
             </button>
           </div>
         </div>

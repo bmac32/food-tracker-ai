@@ -31,7 +31,11 @@ const RING_COLOR: Record<string, string> = {
 }
 
 function getMessage(type: string, total: number, goal: number, estimated: boolean) {
-  const diff = goal - total
+  // Round for display — raw float math (12.799999999999999) torches trust
+  // in the numbers. Whole for calories, one decimal for macros.
+  const raw = goal - total
+  const diff =
+    type === "calories" ? Math.round(raw) : Math.round(raw * 10) / 10
   const tilde = estimated ? "~" : ""
 
   if (diff > 0) {

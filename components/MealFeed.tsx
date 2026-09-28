@@ -252,7 +252,12 @@ export default function MealFeed({
   // rows, optimistic local update for unsaved ones).
   const handleTeach =
     (meal: any) =>
-    async (item: string, grams: number, macros: TeachMacros) => {
+    async (
+      item: string,
+      grams: number,
+      macros: TeachMacros,
+      gramsConfirmed: boolean
+    ) => {
       const corrRes = await fetch("/api/food-corrections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -287,6 +292,15 @@ export default function MealFeed({
             it.carbs = r1(macros.carbs)
             it.fat = r1(macros.fat)
             it.source = "yours"
+            if (grams > 0) {
+              it.grams = r1(grams)
+              it.per100 = {
+                protein: r1((macros.protein * 100) / grams),
+                carbs: r1((macros.carbs * 100) / grams),
+                fat: r1((macros.fat * 100) / grams),
+              }
+            }
+            if (gramsConfirmed) it.gramsSource = "hers"
           }
           protein += Number(it.protein) || 0
           carbs += Number(it.carbs) || 0
@@ -301,7 +315,9 @@ export default function MealFeed({
         ai.fat = fat
         ai.calories = Math.round(protein * 4 + carbs * 4 + fat * 9)
         ai.estimated = items.some(
-          (it: any) => it.source !== "yours" && it.source !== "usda"
+          (it: any) =>
+            (it.source !== "yours" && it.source !== "usda") ||
+            it.gramsSource !== "hers"
         )
         return { ...m, ai_analysis: ai }
       }
@@ -315,6 +331,8 @@ export default function MealFeed({
             protein: macros.protein,
             carbs: macros.carbs,
             fat: macros.fat,
+            grams,
+            gramsConfirmed,
           }),
         })
         const data = await res.json().catch(() => null)
