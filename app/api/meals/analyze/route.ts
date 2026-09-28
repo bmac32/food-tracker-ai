@@ -245,7 +245,9 @@ async function finalize(raw: any, fallbackFoods: string[] = []) {
  * Second pass: run every food item through the truth loop
  * (her correction -> USDA lab data -> AI estimate) and rebuild the
  * meal totals from the resolved values. Sets `estimated` true when any
- * item is still an AI guess, so the UI can show an honest "~".
+ * item is still a guess — either its per-100g values are AI-estimated
+ * OR its portion is (the analyzer's grams are always a guess until she
+ * confirms them), so the UI can show an honest "~".
  */
 async function applyFoodTruth(result: any, supabase: any, userId: string) {
   const items = Array.isArray(result?.food_items) ? result.food_items : []
@@ -275,7 +277,10 @@ async function applyFoodTruth(result: any, supabase: any, userId: string) {
       it.fat = resolved.fat
       it.per100 = resolved.per100
       it.source = resolved.source
-      if (resolved.source === "ai") estimated = true
+      // The analyzer's portion grams are always its own guess — she
+      // confirms them later via the amount editor in the review card.
+      it.gramsSource = "ai"
+      if (resolved.source === "ai" || it.gramsSource !== "hers") estimated = true
       protein += resolved.protein
       carbs += resolved.carbs
       fat += resolved.fat

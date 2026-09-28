@@ -28,6 +28,7 @@ export default function CoachNext({
   closureNote,
   fridgeAction,
   onFridgeSnap,
+  onLogSuggestion,
   onClose,
 }: {
   tip: CoachTip
@@ -38,6 +39,8 @@ export default function CoachNext({
   /** Suggestions weren't grounded in her history — offer a fridge snap instead of guessing. */
   fridgeAction?: boolean
   onFridgeSnap?: () => void
+  /** One-tap logging: a tapped suggestion opens a pre-filled meal card. */
+  onLogSuggestion?: (suggestion: string) => void
   onClose: () => void
 }) {
   const showFridge = !!fridgeAction && !!onFridgeSnap
@@ -85,14 +88,25 @@ export default function CoachNext({
 
         {tip.suggestions.length > 0 && !showFridge && (
           <div className="flex flex-wrap gap-1.5 pt-0.5">
-            {tip.suggestions.map((s, i) => (
-              <span
-                key={i}
-                className="bg-surface-2 border border-hair rounded-full px-2.5 py-1 text-[11px] font-medium text-ink-dim"
-              >
-                {s}
-              </span>
-            ))}
+            {tip.suggestions.map((s, i) =>
+              onLogSuggestion ? (
+                <button
+                  key={i}
+                  onClick={() => onLogSuggestion(s)}
+                  title={`Log "${s}"`}
+                  className="bg-surface-2 border border-hair rounded-full px-2.5 py-1 text-[11px] font-medium text-ink-dim transition-all duration-150 ease-spring hover:border-protein/40 hover:text-ink active:scale-95"
+                >
+                  {s}
+                </button>
+              ) : (
+                <span
+                  key={i}
+                  className="bg-surface-2 border border-hair rounded-full px-2.5 py-1 text-[11px] font-medium text-ink-dim"
+                >
+                  {s}
+                </span>
+              )
+            )}
           </div>
         )}
 
