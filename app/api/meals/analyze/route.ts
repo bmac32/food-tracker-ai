@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { getRouteUser, createServerSupabase } from "@/lib/supabaseServer"
-import { resolveFoodMacros } from "@/lib/foodTruth"
+import {
+  resolveFoodMacros,
+  normalizeFoodKey,
+  getPortionProfile,
+  portionPromptHint,
+  isLearnedPortion,
+  type PortionProfileEntry,
+} from "@/lib/foodTruth"
 
 /**
  * POST /api/meals/analyze
@@ -246,13 +253,24 @@ async function finalize(raw: any, fallbackFoods: string[] = []) {
  * (her correction -> USDA lab data -> AI estimate) and rebuild the
  * meal totals from the resolved values. Sets `estimated` true when any
  * item is still a guess — either its per-100g values are AI-estimated
- * OR its portion is (the analyzer's grams are always a guess until she
- * confirms them), so the UI can show an honest "~".
+ * OR its portion is — so the UI can show an honest "~".
+ *
+ * Silent portion learning: when we know her usual portion for a food
+ * (seen 3+ times, taught once) and the model's guess is in the same
+ * ballpark, we use hers and rescale the macros — stamped "learned".
+ * Far-off guesses stay "ai" (honest "~": an unusual portion for her).
  */
-async function applyFoodTruth(result: any, supabase: any, userId: string) {
+async function applyFoodTruth(
+  result: any,
+  supabase: any,
+  userId: string,
+  profile: PortionProfileEntry[] = []
+) {
   const items = Array.isArray(result?.food_items) ? result.food_items : []
   if (items.length === 0) return { ...result, estimated: true }
   const cache = new Map<string, any>()
+  const profileByKey = new Map<string, PortionProfileEntry>()
+  for (const p of profile) profileByKey.set(p.food_key, p)
   const r1 = (n: number) => Math.round(n * 10) / 10
   let protein = 0
   let carbs = 0
@@ -277,13 +295,37 @@ async function applyFoodTruth(result: any, supabase: any, userId: string) {
       it.fat = resolved.fat
       it.per100 = resolved.per100
       it.source = resolved.source
-      // The analyzer's portion grams are always its own guess — she
-      // confirms them later via the amount editor in the review card.
-      it.gramsSource = "ai"
-      if (resolved.source === "ai" || it.gramsSource !== "hers") estimated = true
-      protein += resolved.protein
-      carbs += resolved.carbs
-      fat += resolved.fat
+      // Portion: hers-by-history beats the model's guess when they're
+      // in the same ballpark. Otherwise the model's guess stands, "ai".
+      const modelGrams = Number(it.grams) || 0
+      const prof = profileByKey.get(normalizeFoodKey(String(it.item || "")))
+      if (
+        isLearnedPortion(prof) &&
+        modelGrams > 0 &&
+        Math.abs(modelGrams - prof!.typical_grams) <= 0.5 * prof!.typical_grams
+      ) {
+        const g = Number(prof!.typical_grams)
+        if (resolved.per100) {
+          it.protein = r1((resolved.per100.protein * g) / 100)
+          it.carbs = r1((resolved.per100.carbs * g) / 100)
+          it.fat = r1((resolved.per100.fat * g) / 100)
+        } else if (modelGrams > 0) {
+          const ratio = g / modelGrams
+          it.protein = r1(resolved.protein * ratio)
+          it.carbs = r1(resolved.carbs * ratio)
+          it.fat = r1(resolved.fat * ratio)
+        }
+        it.grams = r1(g)
+        it.gramsSource = "learned"
+      } else {
+        it.gramsSource = "ai"
+      }
+      const trustedPortion =
+        it.gramsSource === "hers" || it.gramsSource === "learned"
+      if (resolved.source === "ai" || !trustedPortion) estimated = true
+      protein += Number(it.protein) || 0
+      carbs += Number(it.carbs) || 0
+      fat += Number(it.fat) || 0
     })
   )
   protein = r1(protein)
@@ -303,14 +345,14 @@ async function applyFoodTruth(result: any, supabase: any, userId: string) {
 // ---------------------------------------------------------------------------
 // Text mode — 1 cheap call
 // ---------------------------------------------------------------------------
-async function analyzeText(text: string) {
+async function analyzeText(text: string, portionHint = "") {
   const res = await getAnthropic().messages.create({
     model: TEXT_MODEL,
     max_tokens: 700,
     messages: [
       {
         role: "user",
-        content: `You are a nutrition expert. A user described their meal as: "${text}". Infer realistic ingredients and portion sizes.\n\n${JSON_INSTRUCTION}\n\n${ESTIMATION_RULES}`,
+        content: `You are a nutrition expert. A user described their meal as: "${text}". Infer realistic ingredients and portion sizes.\n\n${JSON_INSTRUCTION}\n\n${ESTIMATION_RULES}${portionHint}`,
       },
     ],
   })
@@ -322,7 +364,7 @@ async function analyzeText(text: string) {
 
 /** Photo prompt — one version per photo count. Multi-photo mode tells the
  *  model the shots are the SAME meal and to merge, never double-count. */
-function photoPrompt(count: number): string {
+function photoPrompt(count: number, portionHint = ""): string {
   const multi =
     `These ${count} photos are all the SAME meal (different angles or dishes of one meal). ` +
     `They are labeled Photo 1 of ${count} through Photo ${count} of ${count} below. ` +
@@ -331,13 +373,13 @@ function photoPrompt(count: number): string {
     `Merge everything into a single ingredient list — if the same food appears in more than one photo, count it only once.`
   const single =
     `Look at this meal photo. Identify every visible food with realistic portion sizes, then estimate macros.`
-  return `You are a nutrition expert. ${count > 1 ? multi : single}\n\n${JSON_INSTRUCTION}\n\n${ESTIMATION_RULES}`
+  return `You are a nutrition expert. ${count > 1 ? multi : single}\n\n${JSON_INSTRUCTION}\n\n${ESTIMATION_RULES}${portionHint}`
 }
 
 // ---------------------------------------------------------------------------
 // Photo mode — Gemini Flash single structured pass (cheap)
 // ---------------------------------------------------------------------------
-async function analyzePhotoWithGemini(base64Images: string[]) {
+async function analyzePhotoWithGemini(base64Images: string[], portionHint = "") {
   if (!GOOGLE_KEY) throw new Error("GOOGLE_AI_API_KEY not configured")
 
   const res = await fetch(
@@ -350,7 +392,7 @@ async function analyzePhotoWithGemini(base64Images: string[]) {
           {
             parts: [
               {
-                text: photoPrompt(base64Images.length),
+                text: photoPrompt(base64Images.length, portionHint),
               },
               // Labeled, interleaved images: "Photo 1 of N" labels force the
               // model to attend to every photo instead of fixating on the first.
@@ -384,7 +426,7 @@ async function analyzePhotoWithGemini(base64Images: string[]) {
 // ---------------------------------------------------------------------------
 // Photo fallback — 1 cheap Claude vision call (single structured pass)
 // ---------------------------------------------------------------------------
-async function analyzePhotoWithClaude(base64Images: string[]) {
+async function analyzePhotoWithClaude(base64Images: string[], portionHint = "") {
   const res = await getAnthropic().messages.create({
     model: VISION_FALLBACK_MODEL,
     max_tokens: 900,
@@ -408,7 +450,7 @@ async function analyzePhotoWithClaude(base64Images: string[]) {
           ]),
           {
             type: "text" as const,
-            text: photoPrompt(base64Images.length),
+            text: photoPrompt(base64Images.length, portionHint),
           },
         ],
       },
@@ -441,9 +483,13 @@ export async function POST(req: Request) {
     if (text) {
       try {
         const supabase = await createServerSupabase()
-        const result = await analyzeText(String(text))
+        const profile = await getPortionProfile(supabase, user.id)
+        const result = await analyzeText(
+          String(text),
+          portionPromptHint(profile)
+        )
         return NextResponse.json(
-          await applyFoodTruth(result, supabase, user.id)
+          await applyFoodTruth(result, supabase, user.id, profile)
         )
       } catch (err) {
         console.error("TEXT MODE FAILED:", err)
@@ -488,8 +534,10 @@ export async function POST(req: Request) {
     // Pass 1: cheap Gemini structured pass
     try {
       const supabase = await createServerSupabase()
-      const result = await analyzePhotoWithGemini(base64Images)
-      const withTruth = await applyFoodTruth(result, supabase, user.id)
+      const profile = await getPortionProfile(supabase, user.id)
+      const portionHint = portionPromptHint(profile)
+      const result = await analyzePhotoWithGemini(base64Images, portionHint)
+      const withTruth = await applyFoodTruth(result, supabase, user.id, profile)
       return NextResponse.json({ ...withTruth, photos_analyzed: urls.length })
     } catch (err) {
       console.error("GEMINI PHOTO FAILED:", err)
@@ -498,8 +546,10 @@ export async function POST(req: Request) {
     // Pass 2: cheap Claude vision fallback
     try {
       const supabase = await createServerSupabase()
-      const result = await analyzePhotoWithClaude(base64Images)
-      const withTruth = await applyFoodTruth(result, supabase, user.id)
+      const profile = await getPortionProfile(supabase, user.id)
+      const portionHint = portionPromptHint(profile)
+      const result = await analyzePhotoWithClaude(base64Images, portionHint)
+      const withTruth = await applyFoodTruth(result, supabase, user.id, profile)
       return NextResponse.json({ ...withTruth, photos_analyzed: urls.length })
     } catch (err) {
       console.error("CLAUDE VISION FAILED:", err)
