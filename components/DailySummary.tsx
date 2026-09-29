@@ -51,6 +51,27 @@ function getMessage(type: string, total: number, goal: number, estimated: boolea
   return "Slightly high"
 }
 
+// Goal formula in one place: calories from weight, protein 0.8g/lb,
+// fat 30% of calories, carbs fill the rest.
+function formulaGoals(w: number, goalType: string) {
+  let calories = w * 14
+
+  if (goalType === "lose") calories -= 400
+  if (goalType === "gain") calories += 300
+
+  calories = Math.round(calories)
+
+  const protein = Math.round(w * 0.8)
+  const fat = Math.round((calories * 0.3) / 9)
+  const carbs = Math.round((calories - protein * 4 - fat * 9) / 4)
+
+  return { calories, protein, carbs, fat }
+}
+
+function fmtLbs(n: number) {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1)
+}
+
 function useCountUp(target: number, duration = 900) {
   const [value, setValue] = useState(0)
 
@@ -194,6 +215,11 @@ export default function DailySummary(props: Props) {
   // ED-safe display: hide the numbers, show the trend only.
   const [hideNumbers, setHideNumbers] = useState(false)
   const [loggingWeight, setLoggingWeight] = useState(false)
+  // Rationale line after regenerating ("that's the only reason these
+  // numbers moved") — set by handleGenerate, cleared on close/save.
+  const [rationale, setRationale] = useState<string | null>(null)
+  // Bump to re-render after a nudge dismissal (persisted in localStorage).
+  const [dismissTick, setDismissTick] = useState(0)
 
   // -------------------------
   // LOAD GOALS
@@ -344,33 +370,61 @@ export default function DailySummary(props: Props) {
     return { delta: Math.abs(delta), dir, latest: last.weight_lbs }
   })()
 
-  // Tiny sparkline of the logged weights — shape only, no axis numbers,
-  // so it's meaningful even in trend-only (ED-safe) mode.
-  const weightSpark = (() => {
-    if (weightEntries.length < 2) return null
-    const vals = weightEntries.map((e) => e.weight_lbs)
-    const min = Math.min(...vals)
-    const max = Math.max(...vals)
-    const span = max - min || 1
-    const W = 120
-    const H = 32
-    const P = 3
-    const pts = vals.map((v, i) => {
-      const x = P + (i * (W - 2 * P)) / (vals.length - 1)
-      const y = P + (1 - (v - min) / span) * (H - 2 * P)
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    return { pts: pts.join(" "), W, H }
+  // Days since the last logged weight (null = never logged).
+  const daysSinceWeighIn = (() => {
+    if (weightEntries.length === 0) return null
+    const last = weightEntries[weightEntries.length - 1].logged_at // YYYY-MM-DD
+    const ms = Date.now() - new Date(last + "T12:00:00").getTime()
+    return Math.floor(ms / 86400000)
   })()
 
-  // Goals go stale when the weight moves on — a quiet, factual nudge to
-  // regenerate. Never shamy: it's about the math, not her body.
-  const staleGoalsNote = (() => {
-    if (goalsWeight == null || !weightTrend) return null
-    if (Math.abs(weightTrend.latest - goalsWeight) < 2) return null
-    return hideNumbers
-      ? "Your weight has shifted since these goals were set — worth regenerating below."
-      : `Goals were built from ${goalsWeight} lbs — regenerate below?`
+  function readDismissed(key: string | null) {
+    if (key == null || typeof window === "undefined") return false
+    try {
+      return window.localStorage.getItem(key) === "1"
+    } catch (e) {
+      return false
+    }
+  }
+
+  function writeDismissed(key: string | null) {
+    if (key == null || typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(key, "1")
+    } catch (e) {
+      // non-fatal — the note just shows again next open
+    }
+    setDismissTick((t) => t + 1)
+  }
+
+  // Nudge, if any: drift first (the specific nudge), freshness second.
+  // Never both. Every nudge has a real dismiss that sticks until the
+  // underlying fact changes — nothing here ever nags.
+  const staleNote: { copy: string; dismiss: () => void } | null = (() => {
+    if (
+      goalsWeight != null &&
+      weightTrend &&
+      Math.abs(weightTrend.latest - goalsWeight) >= 2
+    ) {
+      const key = `staleGoalsDismissed:${goalsWeight}|${weightTrend.latest}`
+      if (readDismissed(key)) return null
+      return {
+        copy: hideNumbers
+          ? "Your weight has shifted since these goals were set — worth regenerating below."
+          : `Goals were built from ${fmtLbs(goalsWeight)} lbs — regenerate below?`,
+        dismiss: () => writeDismissed(key),
+      }
+    }
+    if (daysSinceWeighIn != null && daysSinceWeighIn >= 21) {
+      const lastDate = weightEntries[weightEntries.length - 1].logged_at
+      const key = `freshGoalsDismissed:${lastDate}`
+      if (readDismissed(key)) return null
+      return {
+        copy: "It's been 3+ weeks since a fresh weight — these goals may be running on old numbers. Regenerate when you're ready?",
+        dismiss: () => writeDismissed(key),
+      }
+    }
+    return null
   })()
 
   // -------------------------
@@ -526,25 +580,34 @@ const anyEstimated = meals.some((meal) => {
 
     setIsGenerating(true)
 
-    let calories = w * 14
+    const gen = formulaGoals(w, goalType)
+    // "goals" is still the pre-generate set here — the comparison point.
+    const prev = goals
+    setGoals(gen)
 
-    if (goalType === "lose") calories -= 400
-    if (goalType === "gain") calories += 300
-
-    calories = Math.round(calories)
-
-    const protein = Math.round(w * 0.8)
-    const fat = Math.round((calories * 0.3) / 9)
-    const carbs = Math.round(
-      (calories - protein * 4 - fat * 9) / 4
-    )
-
-    setGoals({
-      calories,
-      protein,
-      carbs,
-      fat,
-    })
+    // Rationale line: only when weight was the SOLE thing that changed.
+    // The current goals carry the weight they were stamped with
+    // (goalsWeight); if they match what the formula gives for that old
+    // weight under the current goal type, the delta is attributable to
+    // weight alone. Anything else (manual edits, unknown history) and we
+    // make no claim about why the numbers moved.
+    setRationale(null)
+    if (goalsWeight != null && Math.abs(w - goalsWeight) >= 0.5) {
+      const expected = formulaGoals(goalsWeight, goalType)
+      const attributable =
+        Math.abs(prev.calories - expected.calories) <= 1 &&
+        Math.abs(prev.protein - expected.protein) <= 1 &&
+        Math.abs(prev.carbs - expected.carbs) <= 2 &&
+        Math.abs(prev.fat - expected.fat) <= 1
+      if (attributable) {
+        const dir = w < goalsWeight ? "less" : "more"
+        setRationale(
+          hideNumbers
+            ? `Your body needs a little ${dir} fuel than it used to — that's the only reason these numbers moved.`
+            : `At ${fmtLbs(w)} lbs your body runs on a little ${dir} fuel than at ${fmtLbs(goalsWeight)} — that's the only reason these numbers moved.`
+        )
+      }
+    }
 
     setTimeout(() => setIsGenerating(false), 300)
   }
@@ -588,6 +651,7 @@ const anyEstimated = meals.some((meal) => {
       setTimeout(() => {
         setSaving(false)
         setShowModal(false)
+        setRationale(null)
       }, 600)
     } catch (err) {
       console.error(err)
@@ -756,23 +820,6 @@ const anyEstimated = meals.some((meal) => {
                 ) : null}
               </div>
 
-              {weightSpark && (
-                <svg
-                  viewBox={`0 0 ${weightSpark.W} ${weightSpark.H}`}
-                  className="w-full h-8"
-                  aria-hidden
-                >
-                  <polyline
-                    points={weightSpark.pts}
-                    fill="none"
-                    stroke="var(--color-ink-dim)"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              )}
-
               <div className="flex gap-2">
                 <input
                   type="number"
@@ -782,7 +829,10 @@ const anyEstimated = meals.some((meal) => {
                   placeholder="Today's weight (lbs)"
                   value={weight}
                   onFocus={(e) => e.target.select()}
-                  onChange={(e) => setWeight(e.target.value)}
+                  onChange={(e) => {
+                    setWeight(e.target.value)
+                    setRationale(null)
+                  }}
                   className="flex-1 bg-transparent border border-hair-strong rounded-lg px-3 py-2 outline-none transition focus:border-ink/40 text-ink tabular-nums"
                 />
                 <button
@@ -804,8 +854,17 @@ const anyEstimated = meals.some((meal) => {
                 </button>
               </div>
 
-              {staleGoalsNote && (
-                <p className="text-[11px] text-ink-faint">{staleGoalsNote}</p>
+              {staleNote && (
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[11px] text-ink-faint">{staleNote.copy}</p>
+                  <button
+                    onClick={staleNote.dismiss}
+                    className="text-ink-faint hover:text-ink-dim text-sm leading-none px-1"
+                    aria-label="Dismiss"
+                  >
+                    ×
+                  </button>
+                </div>
               )}
             </div>
 
@@ -821,7 +880,7 @@ const anyEstimated = meals.some((meal) => {
                 return (
                   <div key={type} className="flex-1 flex flex-col items-center">
                     <button
-                      onClick={() => setGoalType(type)}
+                      onClick={() => { setGoalType(type); setRationale(null) }}
                       className={`w-full py-2 rounded-lg capitalize transition-all duration-150 ease-spring active:scale-[0.97] ${
                         goalType === type
                           ? "bg-ink text-ground hover:bg-ink/90"
@@ -850,6 +909,14 @@ const anyEstimated = meals.some((meal) => {
             >
               {isGenerating ? "Generating..." : "Generate"}
             </button>
+
+            {/* Rationale — why the numbers moved. Only set when weight was
+                the sole thing that changed; cleared on close/save. */}
+            {rationale && (
+              <p className="text-xs text-ink-dim leading-relaxed bg-surface-2 border border-hair rounded-xl px-3 py-2.5 animate-fade-in">
+                {rationale}
+              </p>
+            )}
 
             {/* ✨ TRUST */}
             <p className="text-xs text-ink-faint text-center">
@@ -915,7 +982,7 @@ const anyEstimated = meals.some((meal) => {
 
             <div className="flex gap-2 pt-2">
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => { setShowModal(false); setRationale(null) }}
                 className="flex-1 border border-hair-strong text-ink rounded-lg py-2 transition-all duration-150 ease-spring hover:border-ink-faint hover:bg-surface-2 active:scale-[0.98]"
               >
                 Cancel
