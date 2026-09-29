@@ -1,3 +1,5 @@
+import { contentWords, wordSimilarity } from "./foodWords"
+
 /**
  * USDA FoodData Central lookup — the "big tracker" accuracy tier.
  *
@@ -57,6 +59,37 @@ async function search(
   }
 }
 
+/**
+ * Relevance check — USDA search is fuzzy, so the first hit is often a
+ * different food ("ice" -> "Ice cream, vanilla", 37 phantom carbs). A hit
+ * is relevant when its description is close to the query: Jaccard
+ * similarity of stemmed content words >= 0.6 against either the
+ * description's head ("Cheese" in "Cheese, cheddar") or the full
+ * description ("cheddar cheese" still finds "Cheese, cheddar").
+ */
+function hitIsRelevant(query: string, hit: any): boolean {
+  const q = contentWords(query)
+  const description = String(hit?.description || "")
+  const head = description.split(",")[0] ?? description
+  return (
+    wordSimilarity(q, contentWords(head)) >= 0.6 ||
+    wordSimilarity(q, contentWords(description)) >= 0.6
+  )
+}
+
+/** First relevant hit's macros, or null when no hit actually matches. */
+function firstRelevantMacros(
+  query: string,
+  hits: any[]
+): UsdaMacrosPer100g | null {
+  for (const hit of hits) {
+    if (!hitIsRelevant(query, hit)) continue
+    const macros = macrosFromHit(hit)
+    if (macros) return macros
+  }
+  return null
+}
+
 /** Pull protein/carbs/fat per 100g out of a search hit. Handles both
  *  per-100g data types (Foundation/SR Legacy) and per-serving Branded. */
 function macrosFromHit(hit: any): UsdaMacrosPer100g | null {
@@ -101,13 +134,15 @@ export async function usdaMacrosFor(
 
   try {
     // Lab-analyzed data first (per 100g, no conversion needed).
+    // First RELEVANT hit, not first hit — USDA search is fuzzy and the
+    // top result is often a different food ("ice" -> "Ice cream").
     let hits = await search(name, "Foundation,SR Legacy", apiKey)
-    let macros = hits.length ? macrosFromHit(hits[0]) : null
+    let macros = firstRelevantMacros(name, hits)
 
     // Manufacturer data as a second chance (scaled from serving size).
     if (!macros) {
       hits = await search(name, "Branded", apiKey)
-      macros = hits.length ? macrosFromHit(hits[0]) : null
+      macros = firstRelevantMacros(name, hits)
     }
 
     cache.set(name, macros)
