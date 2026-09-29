@@ -43,6 +43,9 @@ function getMessage(type: string, total: number, goal: number, estimated: boolea
     return `${tilde}${diff}g left`
   }
 
+  // Exactly at goal after rounding — never "+0 over".
+  if (diff === 0) return "On track"
+
   if (type === "protein") return "On track"
   if (type === "calories") return `+${tilde}${Math.abs(diff)} over`
   return "Slightly high"
@@ -182,6 +185,16 @@ export default function DailySummary(props: Props) {
 
   const [isGenerating, setIsGenerating] = useState(false)
 
+  // Weight log + trend (backlog #9): manual entries, newest last.
+  const [weightEntries, setWeightEntries] = useState<
+    { logged_at: string; weight_lbs: number }[]
+  >([])
+  // The weight the currently-saved goals were generated from (null = unknown).
+  const [goalsWeight, setGoalsWeight] = useState<number | null>(null)
+  // ED-safe display: hide the numbers, show the trend only.
+  const [hideNumbers, setHideNumbers] = useState(false)
+  const [loggingWeight, setLoggingWeight] = useState(false)
+
   // -------------------------
   // LOAD GOALS
   // -------------------------
@@ -212,8 +225,153 @@ export default function DailySummary(props: Props) {
         carbs: latest.carbs,
         fat: latest.fat,
       })
+      setGoalsWeight(
+        latest.weight_lbs != null ? Number(latest.weight_lbs) : null
+      )
     }
   }
+
+  // -------------------------
+  // LOAD WEIGHT LOG (backlog #9)
+  // -------------------------
+  async function loadWeight() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) return
+
+    const since = new Date()
+    since.setDate(since.getDate() - 30)
+
+    const { data, error } = await supabase
+      .from("weight_log")
+      .select("logged_at, weight_lbs")
+      .eq("user_id", user.id)
+      .gte("logged_at", since.toISOString().slice(0, 10))
+      .order("logged_at", { ascending: true })
+
+    if (error) {
+      console.error("WEIGHT LOAD ERROR:", error)
+      return
+    }
+
+    const entries = (data || []).map((d: any) => ({
+      logged_at: d.logged_at,
+      weight_lbs: Number(d.weight_lbs),
+    }))
+    setWeightEntries(entries)
+
+    // Goals derive from weight — prefill the Generate input with the
+    // freshest logged weight so stale memory never rots the goals.
+    const latest = entries[entries.length - 1]
+    if (latest && !weight) {
+      setWeight(String(latest.weight_lbs))
+    }
+
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("hide_weight_numbers")
+      .eq("user_id", user.id)
+      .maybeSingle()
+    if (typeof profile?.hide_weight_numbers === "boolean") {
+      setHideNumbers(profile.hide_weight_numbers)
+    }
+  }
+
+  // Log today's weight (one entry per day — re-logging overwrites).
+  const logWeight = async () => {
+    const w = parseFloat(weight)
+    if (!w || isNaN(w)) return
+    setLoggingWeight(true)
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+      const today = new Date().toISOString().slice(0, 10)
+      const { error } = await supabase.from("weight_log").upsert(
+        { user_id: user.id, weight_lbs: w, logged_at: today },
+        { onConflict: "user_id,logged_at" }
+      )
+      if (error) throw error
+      // Keep the profile weight in sync for anything else that reads it.
+      await supabase
+        .from("user_profiles")
+        .upsert(
+          { user_id: user.id, weight: w, updated_at: new Date().toISOString() },
+          { onConflict: "user_id" }
+        )
+      await loadWeight()
+    } catch (e) {
+      console.error("WEIGHT LOG ERROR:", e)
+    } finally {
+      setLoggingWeight(false)
+    }
+  }
+
+  const toggleHideNumbers = async () => {
+    const next = !hideNumbers
+    setHideNumbers(next)
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+      await supabase
+        .from("user_profiles")
+        .upsert(
+          {
+            user_id: user.id,
+            hide_weight_numbers: next,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        )
+    } catch (e) {
+      console.error("HIDE NUMBERS ERROR:", e)
+      setHideNumbers(!next)
+    }
+  }
+
+  // Trend over the logged weights (needs 2+ entries to mean anything).
+  const weightTrend = (() => {
+    if (weightEntries.length < 2) return null
+    const first = weightEntries[0]
+    const last = weightEntries[weightEntries.length - 1]
+    const delta = last.weight_lbs - first.weight_lbs
+    const dir = delta < -0.5 ? "down" : delta > 0.5 ? "up" : "flat"
+    return { delta: Math.abs(delta), dir, latest: last.weight_lbs }
+  })()
+
+  // Tiny sparkline of the logged weights — shape only, no axis numbers,
+  // so it's meaningful even in trend-only (ED-safe) mode.
+  const weightSpark = (() => {
+    if (weightEntries.length < 2) return null
+    const vals = weightEntries.map((e) => e.weight_lbs)
+    const min = Math.min(...vals)
+    const max = Math.max(...vals)
+    const span = max - min || 1
+    const W = 120
+    const H = 32
+    const P = 3
+    const pts = vals.map((v, i) => {
+      const x = P + (i * (W - 2 * P)) / (vals.length - 1)
+      const y = P + (1 - (v - min) / span) * (H - 2 * P)
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    return { pts: pts.join(" "), W, H }
+  })()
+
+  // Goals go stale when the weight moves on — a quiet, factual nudge to
+  // regenerate. Never shamy: it's about the math, not her body.
+  const staleGoalsNote = (() => {
+    if (goalsWeight == null || !weightTrend) return null
+    if (Math.abs(weightTrend.latest - goalsWeight) < 2) return null
+    return hideNumbers
+      ? "Your weight has shifted since these goals were set — worth regenerating below."
+      : `Goals were built from ${goalsWeight} lbs — regenerate below?`
+  })()
 
   // -------------------------
   // LOAD MEALS
@@ -267,6 +425,7 @@ export default function DailySummary(props: Props) {
     loadMeals()
     loadWorkouts()
     loadGoals()
+    loadWeight()
   }, [refreshTrigger, currentDate])
 
   // -------------------------
@@ -409,7 +568,15 @@ const anyEstimated = meals.some((meal) => {
 
       const { error } = await supabase
         .from("user_goals")
-        .insert([{ ...goals, user_id: user.id }])
+        .insert([
+          {
+            ...goals,
+            user_id: user.id,
+            // Stamp the weight these goals were generated from, so the app
+            // can notice when the weight moves on and the goals go stale.
+            weight_lbs: weight && !isNaN(parseFloat(weight)) ? parseFloat(weight) : null,
+          },
+        ])
 
       if (error) {
         console.error("SAVE ERROR:", error)
@@ -557,13 +724,90 @@ const anyEstimated = meals.some((meal) => {
 
             <h2 className="text-lg font-semibold text-ink">Edit Goals</h2>
 
-            <input
-              type="number"
-              placeholder="Current weight (lbs)"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-              className="w-full bg-transparent border border-hair-strong rounded-lg px-3 py-2 outline-none transition focus:border-ink/40 text-ink"
-            />
+            {/* WEIGHT LOG + TREND (backlog #9) — manual entry, trend lives
+                with the goals because goals derive from weight. */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between min-h-[16px]">
+                <p className="text-[11px] text-ink-faint">Weight</p>
+                {weightTrend ? (
+                  hideNumbers ? (
+                    <p className="text-[11px] text-ink-dim">
+                      {weightTrend.dir === "down"
+                        ? "trending down ↓"
+                        : weightTrend.dir === "up"
+                          ? "trending up ↑"
+                          : "holding steady →"}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-ink-dim tabular-nums">
+                      {weightTrend.latest} lbs ·{" "}
+                      {weightTrend.dir === "down"
+                        ? "↓"
+                        : weightTrend.dir === "up"
+                          ? "↑"
+                          : "→"}{" "}
+                      {weightTrend.delta.toFixed(1)} / 30d
+                    </p>
+                  )
+                ) : weightEntries.length === 1 && !hideNumbers ? (
+                  <p className="text-[11px] text-ink-dim tabular-nums">
+                    {weightEntries[0].weight_lbs} lbs
+                  </p>
+                ) : null}
+              </div>
+
+              {weightSpark && (
+                <svg
+                  viewBox={`0 0 ${weightSpark.W} ${weightSpark.H}`}
+                  className="w-full h-8"
+                  aria-hidden
+                >
+                  <polyline
+                    points={weightSpark.pts}
+                    fill="none"
+                    stroke="var(--color-ink-dim)"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
+                  placeholder="Today's weight (lbs)"
+                  value={weight}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setWeight(e.target.value)}
+                  className="flex-1 bg-transparent border border-hair-strong rounded-lg px-3 py-2 outline-none transition focus:border-ink/40 text-ink tabular-nums"
+                />
+                <button
+                  onClick={logWeight}
+                  disabled={loggingWeight || !weight || isNaN(parseFloat(weight))}
+                  className="px-4 py-2 rounded-lg text-sm transition-all duration-150 ease-spring active:scale-[0.97] disabled:opacity-50 bg-surface-2 border border-hair-strong text-ink hover:border-ink-faint"
+                >
+                  {loggingWeight ? "…" : "Log"}
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={toggleHideNumbers}
+                  className="text-[11px] text-ink-faint transition-colors hover:text-ink-dim"
+                  aria-pressed={hideNumbers}
+                >
+                  {hideNumbers ? "Show numbers" : "Hide numbers — trend only"}
+                </button>
+              </div>
+
+              {staleGoalsNote && (
+                <p className="text-[11px] text-ink-faint">{staleGoalsNote}</p>
+              )}
+            </div>
 
             <div className="flex gap-2">
               {["lose", "maintain", "gain"].map((type) => {
@@ -620,6 +864,7 @@ const anyEstimated = meals.some((meal) => {
                 <p className="text-[11px] text-ink-faint">Calories</p>
                 <input
                   value={goals.calories}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) =>
                     setGoals({ ...goals, calories: Number(e.target.value) })
                   }
@@ -632,6 +877,7 @@ const anyEstimated = meals.some((meal) => {
                 <p className="text-[11px] text-ink-faint">Protein (g)</p>
                 <input
                   value={goals.protein}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) =>
                     setGoals({ ...goals, protein: Number(e.target.value) })
                   }
@@ -644,6 +890,7 @@ const anyEstimated = meals.some((meal) => {
                 <p className="text-[11px] text-ink-faint">Carbs (g)</p>
                 <input
                   value={goals.carbs}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) =>
                     setGoals({ ...goals, carbs: Number(e.target.value) })
                   }
@@ -656,6 +903,7 @@ const anyEstimated = meals.some((meal) => {
                 <p className="text-[11px] text-ink-faint">Fat (g)</p>
                 <input
                   value={goals.fat}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) =>
                     setGoals({ ...goals, fat: Number(e.target.value) })
                   }
