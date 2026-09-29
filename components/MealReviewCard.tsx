@@ -212,13 +212,23 @@ export default function MealReviewCard({
       }),
     })
     if (!res.ok) throw new Error("Couldn't save the correction.")
+    // The server sanity-checks the AI's gram estimate against her usual
+    // portion before storing — use its grams so this meal shows exactly
+    // what was remembered (they can differ when the guess looked off).
+    let data: any = {}
+    try {
+      data = await res.json()
+    } catch {
+      data = {}
+    }
+    const g = Number(data.gramsUsed) > 0 ? Number(data.gramsUsed) : grams
     // The corrected per-100g values, so the portion bar rescales correctly.
     const per100 =
-      grams > 0
+      g > 0
         ? {
-            protein: r1((macros.protein * 100) / grams),
-            carbs: r1((macros.carbs * 100) / grams),
-            fat: r1((macros.fat * 100) / grams),
+            protein: r1((macros.protein * 100) / g),
+            carbs: r1((macros.carbs * 100) / g),
+            fat: r1((macros.fat * 100) / g),
           }
         : null
     setItems((prev) =>
@@ -226,7 +236,7 @@ export default function MealReviewCard({
         it.item === item
           ? {
               ...it,
-              grams: grams > 0 ? r1(grams) : it.grams,
+              grams: g > 0 ? r1(g) : it.grams,
               protein: macros.protein,
               carbs: macros.carbs,
               fat: macros.fat,
@@ -238,6 +248,10 @@ export default function MealReviewCard({
           : it
       )
     )
+    return {
+      adjusted: !!data.adjusted,
+      typicalGrams: Number(data.typicalGrams) || 0,
+    }
   }
 
   // Honest "~": a total is exact only when every item's per-100g values

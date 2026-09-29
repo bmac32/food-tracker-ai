@@ -269,6 +269,17 @@ export default function MealFeed({
         }),
       })
       if (!corrRes.ok) throw new Error("Couldn't save the correction.")
+      // The server sanity-checks the AI's gram estimate against her usual
+      // portion before storing — use its grams so this meal shows exactly
+      // what was remembered.
+      let corrData: any = {}
+      try {
+        corrData = await corrRes.json()
+      } catch {
+        corrData = {}
+      }
+      const g =
+        Number(corrData.gramsUsed) > 0 ? Number(corrData.gramsUsed) : grams
 
       const r1 = (n: number) => Math.round(n * 10) / 10
       const applyLocal = (m: any) => {
@@ -291,12 +302,12 @@ export default function MealFeed({
             it.carbs = r1(macros.carbs)
             it.fat = r1(macros.fat)
             it.source = "yours"
-            if (grams > 0) {
-              it.grams = r1(grams)
+            if (g > 0) {
+              it.grams = r1(g)
               it.per100 = {
-                protein: r1((macros.protein * 100) / grams),
-                carbs: r1((macros.carbs * 100) / grams),
-                fat: r1((macros.fat * 100) / grams),
+                protein: r1((macros.protein * 100) / g),
+                carbs: r1((macros.carbs * 100) / g),
+                fat: r1((macros.fat * 100) / g),
               }
             }
           }
@@ -331,7 +342,7 @@ export default function MealFeed({
             protein: macros.protein,
             carbs: macros.carbs,
             fat: macros.fat,
-            grams,
+            grams: g,
           }),
         })
         const data = await res.json().catch(() => null)
@@ -341,12 +352,19 @@ export default function MealFeed({
               m.id === meal.id ? { ...m, ai_analysis: data.ai_analysis } : m
             )
           )
-          return
+          return {
+            adjusted: !!corrData.adjusted,
+            typicalGrams: Number(corrData.typicalGrams) || 0,
+          }
         }
       }
       setMeals((prev) =>
         prev.map((m) => (m.id === meal.id ? applyLocal(m) : m))
       )
+      return {
+        adjusted: !!corrData.adjusted,
+        typicalGrams: Number(corrData.typicalGrams) || 0,
+      }
     }
 
   const handlePhotoChange = async (meal: any, i: number) => {

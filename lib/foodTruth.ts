@@ -301,21 +301,20 @@ export function isLearnedPortion(p: PortionProfileEntry | undefined): boolean {
 }
 
 /**
- * Her usual portion grams for an item — exact profile hit first, then the
- * longest profile entry whose phrase appears in the item name (same
- * matching as corrections). Returns 0 when the app hasn't seen the food.
+ * Her portion-profile entry for an item — exact hit first, then the longest
+ * profile entry whose phrase appears in the item name (same matching as
+ * corrections). Returns null when the app hasn't seen the food.
  */
-export function typicalGramsFor(
+export function findProfileEntry(
   item: string,
   profile: PortionProfileEntry[]
-): number {
+): PortionProfileEntry | null {
   const key = normalizeFoodKey(item)
-  if (!key || !Array.isArray(profile) || profile.length === 0) return 0
+  if (!key || !Array.isArray(profile) || profile.length === 0) return null
   const exact = profile.find((p) => p.food_key === key)
-  const exactGrams = Number(exact?.typical_grams) || 0
-  if (exactGrams > 0) return exactGrams
+  if (exact) return exact
   const words = contentWords(key)
-  if (words.length === 0) return 0
+  if (words.length === 0) return null
   let best: PortionProfileEntry | null = null
   let bestLen = 0
   for (const p of profile) {
@@ -326,5 +325,17 @@ export function typicalGramsFor(
       bestLen = cw.length
     }
   }
-  return Number(best?.typical_grams) || 0
+  return best
+}
+
+/**
+ * Her usual portion grams for an item — exact profile hit first, then the
+ * longest profile entry whose phrase appears in the item name (same
+ * matching as corrections). Returns 0 when the app hasn't seen the food.
+ */
+export function typicalGramsFor(
+  item: string,
+  profile: PortionProfileEntry[]
+): number {
+  return Number(findProfileEntry(item, profile)?.typical_grams) || 0
 }
