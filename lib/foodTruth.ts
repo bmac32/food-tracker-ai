@@ -12,6 +12,14 @@
  * the app visibly getting better over time.
  */
 import { usdaMacrosFor, type UsdaMacrosPer100g } from "./usda"
+import {
+  normalizeFoodKey,
+  contentWords,
+  containsPhrase,
+} from "./foodWords"
+
+// Re-exported so existing importers ("@/lib/foodTruth") keep working.
+export { normalizeFoodKey }
 
 export type MacroSource = "yours" | "usda" | "ai"
 
@@ -28,11 +36,6 @@ export type ResolvedMacros = {
   usedTypicalPortion?: boolean
 }
 
-/** Canonical key for a food name: "  Dill  Pickles " -> "dill pickles". */
-export function normalizeFoodKey(name: string): string {
-  return name.toLowerCase().trim().replace(/\s+/g, " ")
-}
-
 /**
  * Correction matching — "correct once, remembered forever" has to survive
  * the analyzer naming things slightly differently.
@@ -44,59 +47,6 @@ export function normalizeFoodKey(name: string): string {
  * with oat milk" and "iced cappuccino" both find "cappuccino".
  * Whole-word matching only, so "tea" never matches "steak".
  */
-
-// Words that carry no food meaning — dropped before matching.
-const STOPWORDS = new Set([
-  "with",
-  "and",
-  "or",
-  "of",
-  "a",
-  "an",
-  "the",
-  "in",
-  "on",
-  "to",
-  "for",
-])
-
-/** Tiny stemmer so "blueberries" matches "blueberry" (applied to both sides). */
-function stemWord(w: string): string {
-  let s = w.toLowerCase()
-  if (s.length > 3) {
-    if (s.endsWith("ies")) s = s.slice(0, -3) + "y"
-    else if (/(oes|ses|xes|zes|ches|shes)$/.test(s)) s = s.slice(0, -2)
-    else if (s.endsWith("s") && !s.endsWith("ss")) s = s.slice(0, -1)
-  }
-  return s
-}
-
-/**
- * Stemmed content words: "  Cappuccino with Oat Milk " ->
- * ["cappuccino", "oat", "milk"].
- */
-function contentWords(name: string): string[] {
-  return normalizeFoodKey(name)
-    .split(" ")
-    .map(stemWord)
-    .filter((w) => w.length > 0 && !STOPWORDS.has(w))
-}
-
-/** True when every word of `phrase` appears contiguously inside `words`. */
-function containsPhrase(words: string[], phrase: string[]): boolean {
-  if (phrase.length === 0 || phrase.length > words.length) return false
-  for (let i = 0; i <= words.length - phrase.length; i++) {
-    let ok = true
-    for (let j = 0; j < phrase.length; j++) {
-      if (words[i + j] !== phrase[j]) {
-        ok = false
-        break
-      }
-    }
-    if (ok) return true
-  }
-  return false
-}
 
 type Correction = {
   food_key: string
@@ -176,6 +126,9 @@ async function findCorrection(
 
 const r1 = (n: number) => Math.round(n * 10) / 10
 
+/** Foods that are zero macros by physics — exact normalized name match. */
+const ZERO_MACRO_FOODS = new Set(["ice", "water"])
+
 function scale(per100: UsdaMacrosPer100g, grams: number) {
   const k = grams / 100
   return {
@@ -242,6 +195,20 @@ export async function resolveFoodMacros(opts: {
         source: "yours",
         usedTypicalPortion: usedTypical,
       }
+    }
+  }
+
+  // 1b. Ice and water are zero by physics — never estimate macros for them,
+  // and never let a fuzzy USDA hit ("Ice cream") speak for them. Stamped
+  // "usda": lab-grade certainty, no "~".
+  if (ZERO_MACRO_FOODS.has(normalizeFoodKey(item))) {
+    return {
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      per100: { protein: 0, carbs: 0, fat: 0 },
+      source: "usda",
+      usedTypicalPortion: usedTypical,
     }
   }
 

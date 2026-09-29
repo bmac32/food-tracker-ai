@@ -137,7 +137,7 @@ const JSON_INSTRUCTION = `Return ONLY valid JSON, no markdown fences:
  "foods": [{"item": "grilled chicken breast", "grams": 150, "protein": 46, "carbs": 0, "fat": 5}, {"item": "roasted carrots", "grams": 100, "protein": 1, "carbs": 10, "fat": 4}],
  "image_query": "3-6 word stock-photo search describing this dish as plated, e.g. 'fluffy scrambled eggs on toast'. If the meal is several separate items rather than one cooked dish (snack plate, crackers with dips, etc.), describe it as a plate, e.g. 'hummus cheese crackers snack plate'"
 }
-List EVERY distinct food you can identify as its own item — a meal with steak and carrots is two items, not one. Plain item names, no quantities in the name.`
+List EVERY distinct food you can identify as its own item — a meal with steak and carrots is two items, not one. Plain item names, no quantities in the name. Preparation words (iced, grilled, baked, steamed, fried, toasted, roasted) describe how a food is made — never list them as separate items: "iced cappuccino" is one item, not "ice" + "cappuccino".`
 
 /**
  * Hybrid accuracy: the model identifies foods and estimates PORTION GRAMS
@@ -146,7 +146,7 @@ List EVERY distinct food you can identify as its own item — a meal with steak 
  * whenever they exist — the AI only does portion math, never macro invention.
  * Calories are DERIVED via Atwater 4/4/9 so nothing can contradict itself.
  */
-const ESTIMATION_RULES = `For each food: give a plain item name (no quantities in the name), your best estimate of grams for a standard home-cooked portion (not restaurant-sized unless the user says so), and your best macro guess per that portion. Only count oils, butter, dressings, or sauces if the user mentions them or they are clearly visible in the photo; never assume hidden fats. The server checks her saved food corrections first, then verifies every item against the USDA database and uses lab-measured values when found — your grams do the portion math, your macros are only the fallback.`
+const ESTIMATION_RULES = `For each food: give a plain item name (no quantities in the name), your best estimate of grams for a standard home-cooked portion (not restaurant-sized unless the user says so), and your best macro guess per that portion. Only count oils, butter, dressings, or sauces if the user mentions them or they are clearly visible in the photo; never assume hidden fats. Ice and water are always 0 protein, 0 carbs, 0 fat — never estimate macros for them. The server checks her saved food corrections first, then verifies every item against the USDA database and uses lab-measured values when found — your grams do the portion math, your macros are only the fallback.`
 
 type FoodItem = {
   item: string
