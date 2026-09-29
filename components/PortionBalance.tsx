@@ -218,7 +218,9 @@ export default function PortionBalance({
                         />
                       )}
                       <span className="text-[11px] text-ink-faint tabular-nums shrink-0">
-                        {shares[i]}%
+                        {shares[i] === 0 && shareValues[i] > 0
+                          ? "<1%"
+                          : `${shares[i]}%`}
                       </span>
                     </>
                   )}
