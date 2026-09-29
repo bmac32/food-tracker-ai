@@ -64,5 +64,23 @@ export async function POST(req: Request) {
     )
   }
 
+  // Silent portion learning: a teach is a strong portion signal — she
+  // engaged with this food, so its shown portion feeds her usual-portion
+  // profile. Best-effort; never fails the correction itself.
+  try {
+    const grams = Number(body.grams) || 0
+    const label = String(body.food || "").trim()
+    if (grams > 0 && label) {
+      await supabase.rpc("record_portion", {
+        p_food_key: food_key,
+        p_food_label: label.slice(0, 80),
+        p_grams: grams,
+        p_taught: true,
+      })
+    }
+  } catch (e) {
+    console.error("PORTION RECORD FAILED:", e)
+  }
+
   return NextResponse.json({ ok: true, food_key, per100 })
 }

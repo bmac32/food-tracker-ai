@@ -255,8 +255,7 @@ export default function MealFeed({
     async (
       item: string,
       grams: number,
-      macros: TeachMacros,
-      gramsConfirmed: boolean
+      macros: TeachMacros
     ) => {
       const corrRes = await fetch("/api/food-corrections", {
         method: "POST",
@@ -300,7 +299,6 @@ export default function MealFeed({
                 fat: r1((macros.fat * 100) / grams),
               }
             }
-            if (gramsConfirmed) it.gramsSource = "hers"
           }
           protein += Number(it.protein) || 0
           carbs += Number(it.carbs) || 0
@@ -317,7 +315,7 @@ export default function MealFeed({
         ai.estimated = items.some(
           (it: any) =>
             (it.source !== "yours" && it.source !== "usda") ||
-            it.gramsSource !== "hers"
+            (it.gramsSource !== "hers" && it.gramsSource !== "learned")
         )
         return { ...m, ai_analysis: ai }
       }
@@ -332,7 +330,6 @@ export default function MealFeed({
             carbs: macros.carbs,
             fat: macros.fat,
             grams,
-            gramsConfirmed,
           }),
         })
         const data = await res.json().catch(() => null)

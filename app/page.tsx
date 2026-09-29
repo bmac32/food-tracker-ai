@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabase"
 import { getSmartFoodImages, fallbackSet } from "@/lib/getSmartFoodImage"
 import { dishKey } from "@/lib/photoLearning"
+import { normalizeFoodKey } from "@/lib/foodTruth"
 
 import { Sparkles, Dumbbell } from "lucide-react"
 
@@ -464,6 +465,32 @@ export default function Home() {
             verdict: "chosen",
           }),
         }).catch(() => {})
+      }
+
+      // Silent portion learning: every logged meal teaches her usual
+      // portions — no UI, no admin. Fire-and-forget, never blocks the save.
+      try {
+        const items = Array.isArray((analysis as any)?.food_items)
+          ? (analysis as any).food_items
+          : []
+        for (const f of items) {
+          const g = Number(f?.grams) || 0
+          const label = String(f?.item || "").trim()
+          if (g > 0 && label) {
+            supabase
+              .rpc("record_portion", {
+                p_food_key: normalizeFoodKey(label),
+                p_food_label: label.slice(0, 80),
+                p_grams: g,
+                p_taught: false,
+              })
+              .then(({ error }: any) => {
+                if (error) console.error("PORTION RECORD FAILED:", error)
+              })
+          }
+        }
+      } catch (e) {
+        console.error("PORTION RECORD FAILED:", e)
       }
 
       // Live coach: guidance for the next meal, based on today so far.

@@ -187,8 +187,7 @@ export default function MealReviewCard({
   const handleTeach = async (
     item: string,
     grams: number,
-    macros: TeachMacros,
-    gramsConfirmed: boolean
+    macros: TeachMacros
   ) => {
     const res = await fetch("/api/food-corrections", {
       method: "POST",
@@ -222,9 +221,8 @@ export default function MealReviewCard({
               fat: macros.fat,
               per100: per100 ?? it.per100,
               source: "yours",
-              // Only a portion she actually touched counts as hers — an
-              // untouched AI guess stays an estimate even after a correction.
-              gramsSource: gramsConfirmed ? "hers" : it.gramsSource,
+              // The portion source is untouched by a macro correction —
+              // portions are learned silently from her logging instead.
             }
           : it
       )
@@ -232,11 +230,12 @@ export default function MealReviewCard({
   }
 
   // Honest "~": a total is exact only when every item's per-100g values
-  // AND its portion are both trusted. The analyzer's portion is always a
-  // guess until she confirms it in the teach editor's amount field.
+  // AND its portion are both trusted. Portions earn trust silently — once
+  // the app has seen the food 3+ times and she has taught it once.
   const estimated = items.some(
     (i) =>
-      (i.source !== "yours" && i.source !== "usda") || i.gramsSource !== "hers"
+      (i.source !== "yours" && i.source !== "usda") ||
+      (i.gramsSource !== "hers" && i.gramsSource !== "learned")
   )
 
   const handleSave = async () => {

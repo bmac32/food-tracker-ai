@@ -166,3 +166,59 @@ export function servingToPer100(
     fat: r1(fat * k),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Silent portion learning — "the app knows her."
+//
+// Every logged meal and every teach correction records the food's portion
+// grams (no UI, no admin). The analyzer gets her usual portions as defaults
+// so first guesses land near her reality, and a portion counts as "learned"
+// (clean number, no "~") once a food has been seen 3+ times AND taught once.
+// ---------------------------------------------------------------------------
+
+export type PortionProfileEntry = {
+  food_key: string
+  food_label: string
+  typical_grams: number
+  samples: number
+  taught: boolean
+}
+
+/** Her learned portions, most-sampled first. Server-side; RLS keeps it hers. */
+export async function getPortionProfile(
+  supabase: any,
+  userId: string,
+  limit = 200
+): Promise<PortionProfileEntry[]> {
+  try {
+    const { data } = await supabase
+      .from("portion_profile")
+      .select("food_key, food_label, typical_grams, samples, taught")
+      .eq("user_id", userId)
+      .order("samples", { ascending: false })
+      .limit(limit)
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Compact prompt hint so the model's first portion guesses land near her
+ * reality instead of a stranger's. Only foods seen 2+ times — avoids
+ * biasing the model on one-offs.
+ */
+export function portionPromptHint(profile: PortionProfileEntry[]): string {
+  const rows = profile.filter((p) => p.samples >= 2).slice(0, 30)
+  if (rows.length === 0) return ""
+  const lines = rows.map(
+    (p) =>
+      `- ${p.food_label}: ${Math.round(Number(p.typical_grams))}g (her usual, seen ${p.samples}x)`
+  )
+  return `\n\nHer usual portions — default to these unless the photo or description clearly shows otherwise:\n${lines.join("\n")}`
+}
+
+/** A portion earns a clean number (no "~") once seen 3+ times and taught once. */
+export function isLearnedPortion(p: PortionProfileEntry | undefined): boolean {
+  return !!p && p.samples >= 3 && p.taught
+}

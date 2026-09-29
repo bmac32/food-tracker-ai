@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState } from "react"
 import { ChevronDown, ChartPie, Pencil, Check } from "lucide-react"
 
 // Collapsible "where your macros come from" breakdown. Read-only and
@@ -21,7 +21,8 @@ export type PortionShareItem = {
   grams?: number
   /** "yours" | "usda" | "ai" — drives the honest "~" on estimates. */
   source?: string
-  /** "hers" once she confirms the portion — until then the AI guessed it. */
+  /** "hers" once she confirms the portion, "learned" once the app knows her
+   *  usual portion (3+ sightings, taught once) — until then the AI guessed it. */
   gramsSource?: string
   /** Per-100g reference values when known (USDA / her correction). */
   per100?: { protein: number; carbs: number; fat: number } | null
@@ -35,13 +36,13 @@ type Props = {
   /** Show the teach affordance on rows that have a known serving size. */
   teachable?: boolean
   /** Called after the correction is saved; caller updates its own state.
-   *  gramsConfirmed is true only when she actually touched the amount field —
-   *  an untouched AI portion stays an estimate even after a macro correction. */
+   *  grams is the item's current serving grams — the macros she enters are
+   *  for that serving. Portions are learned silently from her logging, so
+   *  there is deliberately no amount field here: in-and-out, no admin. */
   onTeach?: (
     item: string,
     grams: number,
-    macros: TeachMacros,
-    gramsConfirmed: boolean
+    macros: TeachMacros
   ) => Promise<void>
 }
 
@@ -74,21 +75,18 @@ export default function PortionBalance({
   // Teach-the-app editor state.
   const [teaching, setTeaching] = useState<number | null>(null)
   const [draft, setDraft] = useState<TeachMacros>({ protein: 0, carbs: 0, fat: 0 })
-  const [draftGrams, setDraftGrams] = useState(0)
-  const [gramsDirty, setGramsDirty] = useState(false)
-  // Grams the draft macros were last scaled from — rescaling is always
-  // relative to the previous draft, never compounded off the original.
-  const scaledFromRef = useRef(0)
   const [savingTeach, setSavingTeach] = useState(false)
   const [taught, setTaught] = useState<string | null>(null)
 
   if (!items || items.length === 0) return null
 
   // Honest "~": a number is exact only when the per-100g values AND the
-  // portion are both trusted. The AI's portion guess keeps the "~" even
-  // on USDA-backed items — she clears it by confirming the amount.
+  // portion are both trusted. The portion earns trust silently — once the
+  // app has seen it 3+ times and she has taught it once ("learned") — or
+  // when she explicitly confirmed it ("hers").
   const isEstimated = (it: PortionShareItem) =>
-    (it.source !== "yours" && it.source !== "usda") || it.gramsSource !== "hers"
+    (it.source !== "yours" && it.source !== "usda") ||
+    (it.gramsSource !== "hers" && it.gramsSource !== "learned")
   const anyEstimated = items.some(isEstimated)
   const canTeach = (it: PortionShareItem) =>
     teachable && !!onTeach && (it.grams ?? 0) > 0
@@ -100,45 +98,14 @@ export default function PortionBalance({
       carbs: Math.round(it.carbs * 10) / 10,
       fat: Math.round(it.fat * 10) / 10,
     })
-    setDraftGrams(it.grams ?? 0)
-    scaledFromRef.current = it.grams ?? 0
-    setGramsDirty(false)
     setTeaching(index)
     setTaught(null)
-  }
-
-  // Changing the amount rescales the macros live: from per-100g values when
-  // known, otherwise proportionally from the previous draft amount.
-  const changeGrams = (g: number) => {
-    if (teaching === null) return
-    const grams = Math.max(0, g || 0)
-    const it = items[teaching]
-    const from = scaledFromRef.current
-    setDraftGrams(grams)
-    setGramsDirty(true)
-    if (it.per100 && grams > 0) {
-      const k = grams / 100
-      setDraft({
-        protein: r1(it.per100.protein * k),
-        carbs: r1(it.per100.carbs * k),
-        fat: r1(it.per100.fat * k),
-      })
-      scaledFromRef.current = grams
-    } else if (from > 0 && grams > 0) {
-      const k = grams / from
-      setDraft((d) => ({
-        protein: r1(d.protein * k),
-        carbs: r1(d.carbs * k),
-        fat: r1(d.fat * k),
-      }))
-      scaledFromRef.current = grams
-    }
   }
 
   const saveTeaching = async () => {
     if (teaching === null || !onTeach) return
     const it = items[teaching]
-    const grams = draftGrams > 0 ? draftGrams : it.grams ?? 0
+    const grams = it.grams ?? 0
     if (grams <= 0) return
     setSavingTeach(true)
     try {
@@ -149,8 +116,7 @@ export default function PortionBalance({
           protein: Math.max(0, draft.protein || 0),
           carbs: Math.max(0, draft.carbs || 0),
           fat: Math.max(0, draft.fat || 0),
-        },
-        gramsDirty
+        }
       )
       setTaught(it.item)
     } finally {
@@ -283,22 +249,6 @@ export default function PortionBalance({
                         {isEstimated(it) ? "This was an estimate (~). " : ""}
                         What should I remember for next time?
                       </p>
-                      <label className="block mb-2">
-                        <span className="block text-[10px] text-ink-faint mb-1">
-                          Amount (g){it.gramsSource !== "hers" ? " — the AI guessed this" : ""}
-                        </span>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min={0}
-                          step="any"
-                          value={draftGrams || ""}
-                          placeholder={String(it.grams ?? 0)}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => changeGrams(Number(e.target.value))}
-                          className="w-full bg-ground border border-hair rounded-lg px-2 py-1.5 text-xs text-ink tabular-nums outline-none transition focus:border-ink/40"
-                        />
-                      </label>
                       <div className="flex gap-2">
                         {(
                           [

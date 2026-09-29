@@ -4,10 +4,11 @@ import { normalizeFoodKey } from "@/lib/foodTruth"
 
 /**
  * PATCH /api/meals/[id] — apply a food correction to an already-saved meal.
- * Body: { item, protein, carbs, fat, grams?, gramsConfirmed? } (serving-level
- * macros for that item; grams + gramsConfirmed when she also set the portion).
- * Rewrites the item inside ai_analysis and recomputes the meal totals, so
- * a correction made from the feed fixes that meal too — not just the future.
+ * Body: { item, protein, carbs, fat, grams? } (serving-level macros for that
+ * item; grams is the item's current serving grams). Rewrites the item inside
+ * ai_analysis and recomputes the meal totals, so a correction made from the
+ * feed fixes that meal too — not just the future. Portion trust is never set
+ * here; portions are learned silently from her logging.
  */
 export async function PATCH(
   req: Request,
@@ -67,7 +68,6 @@ export async function PATCH(
       it.source = "yours"
       const g = Number(body.grams)
       if (g > 0) it.grams = r1(g)
-      if (body.gramsConfirmed === true) it.gramsSource = "hers"
       found = true
     }
     protein += Number(it.protein) || 0
@@ -87,10 +87,12 @@ export async function PATCH(
   ai.fat = fat
   ai.calories = Math.round(protein * 4 + carbs * 4 + fat * 9)
   // Honest "~": per-100g values AND the portion must both be trusted.
+  // Portions earn trust silently (seen 3+ times, taught once) — never
+  // through a gram field.
   ai.estimated = items.some(
     (it: any) =>
       (it.source !== "yours" && it.source !== "usda") ||
-      it.gramsSource !== "hers"
+      (it.gramsSource !== "hers" && it.gramsSource !== "learned")
   )
 
   const { error: updateError } = await supabase
