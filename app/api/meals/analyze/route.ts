@@ -7,6 +7,7 @@ import {
   getPortionProfile,
   portionPromptHint,
   isLearnedPortion,
+  typicalGramsFor,
   type PortionProfileEntry,
 } from "@/lib/foodTruth"
 
@@ -278,11 +279,16 @@ async function applyFoodTruth(
   let estimated = false
   await Promise.all(
     items.map(async (it: any) => {
+      const itemName = String(it.item || "")
+      // Her usual portion — the fallback when the analyzer reports no
+      // grams (gram-less drinks, ambiguous portions).
+      const typical = typicalGramsFor(itemName, profile)
       const resolved = await resolveFoodMacros({
         supabase,
         userId,
-        item: String(it.item || ""),
+        item: itemName,
         grams: Number(it.grams) || 0,
+        typicalGrams: typical,
         fallback: {
           protein: Number(it.protein) || 0,
           carbs: Number(it.carbs) || 0,
@@ -295,11 +301,18 @@ async function applyFoodTruth(
       it.fat = resolved.fat
       it.per100 = resolved.per100
       it.source = resolved.source
-      // Portion: hers-by-history beats the model's guess when they're
-      // in the same ballpark. Otherwise the model's guess stands, "ai".
+      // Portion stamping, most trusted first:
+      // "typical" — no gram reading, so her usual portion stands in. Her
+      //   data (correction or USDA scaled to her portion), no "~", and
+      //   still teachable.
+      // "learned" — hers-by-history beats the model's guess when they're
+      //   in the same ballpark. Otherwise the model's guess stands, "ai".
       const modelGrams = Number(it.grams) || 0
-      const prof = profileByKey.get(normalizeFoodKey(String(it.item || "")))
-      if (
+      const prof = profileByKey.get(normalizeFoodKey(itemName))
+      if (resolved.usedTypicalPortion && typical > 0) {
+        it.grams = r1(typical)
+        it.gramsSource = "typical"
+      } else if (
         isLearnedPortion(prof) &&
         modelGrams > 0 &&
         Math.abs(modelGrams - prof!.typical_grams) <= 0.5 * prof!.typical_grams
@@ -321,7 +334,9 @@ async function applyFoodTruth(
         it.gramsSource = "ai"
       }
       const trustedPortion =
-        it.gramsSource === "hers" || it.gramsSource === "learned"
+        it.gramsSource === "hers" ||
+        it.gramsSource === "learned" ||
+        it.gramsSource === "typical"
       if (resolved.source === "ai" || !trustedPortion) estimated = true
       protein += Number(it.protein) || 0
       carbs += Number(it.carbs) || 0

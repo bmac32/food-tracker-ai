@@ -315,7 +315,9 @@ export default function MealFeed({
         ai.estimated = items.some(
           (it: any) =>
             (it.source !== "yours" && it.source !== "usda") ||
-            (it.gramsSource !== "hers" && it.gramsSource !== "learned")
+            (it.gramsSource !== "hers" &&
+              it.gramsSource !== "learned" &&
+              it.gramsSource !== "typical")
         )
         return { ...m, ai_analysis: ai }
       }

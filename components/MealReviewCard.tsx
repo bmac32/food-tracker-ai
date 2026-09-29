@@ -235,7 +235,9 @@ export default function MealReviewCard({
   const estimated = items.some(
     (i) =>
       (i.source !== "yours" && i.source !== "usda") ||
-      (i.gramsSource !== "hers" && i.gramsSource !== "learned")
+      (i.gramsSource !== "hers" &&
+        i.gramsSource !== "learned" &&
+        i.gramsSource !== "typical")
   )
 
   const handleSave = async () => {

@@ -21,6 +21,11 @@ export type ResolvedMacros = {
   fat: number
   per100: { protein: number; carbs: number; fat: number } | null
   source: MacroSource
+  /**
+   * True when the portion came from her usual-portion history because the
+   * analyzer reported no grams. The call site stamps gramsSource "typical".
+   */
+  usedTypicalPortion?: boolean
 }
 
 /** Canonical key for a food name: "  Dill  Pickles " -> "dill pickles". */
@@ -29,58 +34,144 @@ export function normalizeFoodKey(name: string): string {
 }
 
 /**
- * Lookup keys to try, most specific first. "dill pickles" also tries
- * "pickles" — a correction for the plain food should cover its variants.
+ * Correction matching — "correct once, remembered forever" has to survive
+ * the analyzer naming things slightly differently.
+ *
+ * The old approach tried the exact name plus the name minus its first word,
+ * so "cappuccino with oat milk" never found her "cappuccino" correction.
+ * Now: her corrections load once per request, and the longest stored
+ * correction whose phrase appears in the item name wins — "cappuccino
+ * with oat milk" and "iced cappuccino" both find "cappuccino".
+ * Whole-word matching only, so "tea" never matches "steak".
  */
-function candidateKeys(name: string): string[] {
-  const key = normalizeFoodKey(name)
-  if (!key) return []
-  const keys = [key]
-  const words = key.split(" ")
-  if (words.length > 1) keys.push(words.slice(1).join(" "))
-  return keys
+
+// Words that carry no food meaning — dropped before matching.
+const STOPWORDS = new Set([
+  "with",
+  "and",
+  "or",
+  "of",
+  "a",
+  "an",
+  "the",
+  "in",
+  "on",
+  "to",
+  "for",
+])
+
+/** Tiny stemmer so "blueberries" matches "blueberry" (applied to both sides). */
+function stemWord(w: string): string {
+  let s = w.toLowerCase()
+  if (s.length > 3) {
+    if (s.endsWith("ies")) s = s.slice(0, -3) + "y"
+    else if (/(oes|ses|xes|zes|ches|shes)$/.test(s)) s = s.slice(0, -2)
+    else if (s.endsWith("s") && !s.endsWith("ss")) s = s.slice(0, -1)
+  }
+  return s
+}
+
+/**
+ * Stemmed content words: "  Cappuccino with Oat Milk " ->
+ * ["cappuccino", "oat", "milk"].
+ */
+function contentWords(name: string): string[] {
+  return normalizeFoodKey(name)
+    .split(" ")
+    .map(stemWord)
+    .filter((w) => w.length > 0 && !STOPWORDS.has(w))
+}
+
+/** True when every word of `phrase` appears contiguously inside `words`. */
+function containsPhrase(words: string[], phrase: string[]): boolean {
+  if (phrase.length === 0 || phrase.length > words.length) return false
+  for (let i = 0; i <= words.length - phrase.length; i++) {
+    let ok = true
+    for (let j = 0; j < phrase.length; j++) {
+      if (words[i + j] !== phrase[j]) {
+        ok = false
+        break
+      }
+    }
+    if (ok) return true
+  }
+  return false
 }
 
 type Correction = {
+  food_key: string
   protein_per100: number
   carbs_per100: number
   fat_per100: number
+}
+
+/**
+ * Her corrections, loaded once per request (one query, not one per food).
+ * Cached on the request cache the call site passes in.
+ */
+async function loadCorrections(
+  supabase: any,
+  userId: string,
+  cache: Map<string, any>
+): Promise<Correction[]> {
+  const cacheKey = `corrections:${userId}`
+  if (cache.has(cacheKey)) return cache.get(cacheKey) ?? []
+  try {
+    const { data } = await supabase
+      .from("food_corrections")
+      .select("food_key, protein_per100, carbs_per100, fat_per100")
+      .eq("user_id", userId)
+    const list: Correction[] = (Array.isArray(data) ? data : [])
+      .map((d: any) => ({
+        food_key: String(d.food_key || ""),
+        protein_per100: Number(d.protein_per100) || 0,
+        carbs_per100: Number(d.carbs_per100) || 0,
+        fat_per100: Number(d.fat_per100) || 0,
+      }))
+      .filter((c) => c.food_key.length > 0)
+    cache.set(cacheKey, list)
+    return list
+  } catch {
+    cache.set(cacheKey, [])
+    return []
+  }
+}
+
+/**
+ * Find her correction for an item: exact match first, then the longest
+ * stored correction whose phrase appears in the item name.
+ */
+function matchCorrection(
+  item: string,
+  corrections: Correction[]
+): Correction | null {
+  const key = normalizeFoodKey(item)
+  if (!key) return null
+  const exact = corrections.find((c) => c.food_key === key)
+  if (exact) return exact
+  const words = contentWords(key)
+  if (words.length === 0) return null
+  let best: Correction | null = null
+  let bestLen = 0
+  for (const c of corrections) {
+    const cw = contentWords(c.food_key)
+    if (cw.length <= bestLen) continue
+    if (containsPhrase(words, cw)) {
+      best = c
+      bestLen = cw.length
+    }
+  }
+  return best
 }
 
 async function findCorrection(
   supabase: any,
   userId: string,
   item: string,
-  cache: Map<string, Correction | null>
+  cache: Map<string, any>
 ): Promise<Correction | null> {
-  for (const key of candidateKeys(item)) {
-    const cacheKey = `${userId}:${key}`
-    if (cache.has(cacheKey)) {
-      const hit = cache.get(cacheKey)
-      if (hit) return hit
-      continue
-    }
-    try {
-      const { data } = await supabase
-        .from("food_corrections")
-        .select("protein_per100, carbs_per100, fat_per100")
-        .eq("user_id", userId)
-        .eq("food_key", key)
-        .maybeSingle()
-      const correction = data
-        ? {
-            protein_per100: Number(data.protein_per100) || 0,
-            carbs_per100: Number(data.carbs_per100) || 0,
-            fat_per100: Number(data.fat_per100) || 0,
-          }
-        : null
-      cache.set(cacheKey, correction)
-      if (correction) return correction
-    } catch {
-      cache.set(cacheKey, null)
-    }
-  }
-  return null
+  const corrections = await loadCorrections(supabase, userId, cache)
+  return matchCorrection(item, corrections)
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10
@@ -102,29 +193,41 @@ function scale(per100: UsdaMacrosPer100g, grams: number) {
 /**
  * Resolve the best macros for one food item at a serving size.
  * `fallback` is the AI's own estimate, used only when nothing better exists.
+ * `typicalGrams` is her usual portion for this food — used only when the
+ * analyzer reported no grams (gram-less drinks, ambiguous portions), so her
+ * correction and USDA lab data scale to a real serving instead of being
+ * silently skipped.
  */
 export async function resolveFoodMacros(opts: {
   supabase: any
   userId: string
   item: string
   grams: number
+  typicalGrams?: number
   fallback: { protein: number; carbs: number; fat: number }
-  /** Per-request correction cache (user-scoped). Created fresh per call site. */
-  cache?: Map<string, Correction | null>
+  /** Per-request cache (user-scoped). Created fresh per call site. */
+  cache?: Map<string, any>
 }): Promise<ResolvedMacros> {
   const { supabase, userId, item, grams, fallback } = opts
-  const cache = opts.cache ?? new Map<string, Correction | null>()
-  const ai = {
+  const cache = opts.cache ?? new Map<string, any>()
+  const ai: ResolvedMacros = {
     protein: r1(fallback.protein),
     carbs: r1(fallback.carbs),
     fat: r1(fallback.fat),
     per100: null,
     source: "ai" as MacroSource,
+    usedTypicalPortion: false,
   }
 
-  // 1. Her correction — but only when we know the serving size, since
-  // corrections are stored per 100g and must be scaled to the portion.
-  if (grams > 0) {
+  // Serving size: the analyzer's grams when it has them; her usual portion
+  // when it doesn't. Her history beats skipping her correction entirely.
+  const typical = Number(opts.typicalGrams) || 0
+  const effGrams = grams > 0 ? grams : typical
+  const usedTypical = grams <= 0 && typical > 0
+
+  // 1. Her correction — scaled to the serving, or to her usual portion
+  //    when the analyzer gave no grams.
+  if (effGrams > 0) {
     const correction = await findCorrection(supabase, userId, item, cache)
     if (correction) {
       return {
@@ -134,17 +237,24 @@ export async function resolveFoodMacros(opts: {
             carbs: correction.carbs_per100,
             fat: correction.fat_per100,
           },
-          grams
+          effGrams
         ),
         source: "yours",
+        usedTypicalPortion: usedTypical,
       }
     }
   }
 
-  // 2. USDA lab data.
-  if (grams > 0) {
+  // 2. USDA lab data — same portion fallback.
+  if (effGrams > 0) {
     const per100 = await usdaMacrosFor(item)
-    if (per100) return { ...scale(per100, grams), source: "usda" }
+    if (per100) {
+      return {
+        ...scale(per100, effGrams),
+        source: "usda",
+        usedTypicalPortion: usedTypical,
+      }
+    }
   }
 
   // 3. AI estimate — honest fallback, flagged so the UI can show "~".
@@ -221,4 +331,33 @@ export function portionPromptHint(profile: PortionProfileEntry[]): string {
 /** A portion earns a clean number (no "~") once seen 3+ times and taught once. */
 export function isLearnedPortion(p: PortionProfileEntry | undefined): boolean {
   return !!p && p.samples >= 3 && p.taught
+}
+
+/**
+ * Her usual portion grams for an item — exact profile hit first, then the
+ * longest profile entry whose phrase appears in the item name (same
+ * matching as corrections). Returns 0 when the app hasn't seen the food.
+ */
+export function typicalGramsFor(
+  item: string,
+  profile: PortionProfileEntry[]
+): number {
+  const key = normalizeFoodKey(item)
+  if (!key || !Array.isArray(profile) || profile.length === 0) return 0
+  const exact = profile.find((p) => p.food_key === key)
+  const exactGrams = Number(exact?.typical_grams) || 0
+  if (exactGrams > 0) return exactGrams
+  const words = contentWords(key)
+  if (words.length === 0) return 0
+  let best: PortionProfileEntry | null = null
+  let bestLen = 0
+  for (const p of profile) {
+    const cw = contentWords(p.food_key)
+    if (cw.length <= bestLen) continue
+    if (containsPhrase(words, cw)) {
+      best = p
+      bestLen = cw.length
+    }
+  }
+  return Number(best?.typical_grams) || 0
 }
