@@ -30,6 +30,13 @@ export type PortionShareItem = {
 
 export type TeachMacros = { protein: number; carbs: number; fat: number }
 
+/** What the teach call reports back — the server may have anchored the
+ *  correction to her usual portion when the AI's gram guess looked off. */
+export type TeachResult = {
+  adjusted: boolean
+  typicalGrams: number
+}
+
 type Props = {
   items: PortionShareItem[]
   className?: string
@@ -43,7 +50,7 @@ type Props = {
     item: string,
     grams: number,
     macros: TeachMacros
-  ) => Promise<void>
+  ) => Promise<TeachResult | void>
 }
 
 type ShareMode = "calories" | "protein" | "carbs" | "fat"
@@ -77,6 +84,9 @@ export default function PortionBalance({
   const [draft, setDraft] = useState<TeachMacros>({ protein: 0, carbs: 0, fat: 0 })
   const [savingTeach, setSavingTeach] = useState(false)
   const [taught, setTaught] = useState<string | null>(null)
+  // Quiet honesty when the server anchored the correction to her usual
+  // portion instead of the AI's guess — one line, then it fades.
+  const [teachNote, setTeachNote] = useState<string | null>(null)
 
   if (!items || items.length === 0) return null
 
@@ -102,6 +112,7 @@ export default function PortionBalance({
     })
     setTeaching(index)
     setTaught(null)
+    setTeachNote(null)
   }
 
   const saveTeaching = async () => {
@@ -111,7 +122,7 @@ export default function PortionBalance({
     if (grams <= 0) return
     setSavingTeach(true)
     try {
-      await onTeach(
+      const result = await onTeach(
         it.item,
         grams,
         {
@@ -121,6 +132,13 @@ export default function PortionBalance({
         }
       )
       setTaught(it.item)
+      if (result && result.adjusted && result.typicalGrams > 0) {
+        setTeachNote(
+          `Filed against your usual ${Math.round(result.typicalGrams)}g`
+        )
+      } else {
+        setTeachNote(null)
+      }
     } finally {
       setSavingTeach(false)
       setTeaching(null)
@@ -208,6 +226,11 @@ export default function PortionBalance({
                   {taught === it.item ? (
                     <span className="flex items-center gap-1 text-[11px] text-protein shrink-0">
                       <Check size={12} /> Remembered
+                      {teachNote && (
+                        <span className="text-ink-faint font-normal">
+                          · {teachNote}
+                        </span>
+                      )}
                     </span>
                   ) : (
                     <>
