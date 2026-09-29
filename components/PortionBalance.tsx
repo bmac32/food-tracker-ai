@@ -86,7 +86,9 @@ export default function PortionBalance({
   // when she explicitly confirmed it ("hers").
   const isEstimated = (it: PortionShareItem) =>
     (it.source !== "yours" && it.source !== "usda") ||
-    (it.gramsSource !== "hers" && it.gramsSource !== "learned")
+    (it.gramsSource !== "hers" &&
+      it.gramsSource !== "learned" &&
+      it.gramsSource !== "typical")
   const anyEstimated = items.some(isEstimated)
   const canTeach = (it: PortionShareItem) =>
     teachable && !!onTeach && (it.grams ?? 0) > 0

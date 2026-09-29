@@ -92,7 +92,9 @@ export async function PATCH(
   ai.estimated = items.some(
     (it: any) =>
       (it.source !== "yours" && it.source !== "usda") ||
-      (it.gramsSource !== "hers" && it.gramsSource !== "learned")
+      (it.gramsSource !== "hers" &&
+        it.gramsSource !== "learned" &&
+        it.gramsSource !== "typical")
   )
 
   const { error: updateError } = await supabase
