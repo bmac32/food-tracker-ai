@@ -1,6 +1,6 @@
 "use client"
 
-import { Refrigerator, Sparkles, X } from "lucide-react"
+import { Refrigerator, Sparkles, X, Loader2 } from "lucide-react"
 
 export type CoachTip = {
   headline: string
@@ -29,6 +29,7 @@ export default function CoachNext({
   fridgeAction,
   onFridgeSnap,
   onLogSuggestion,
+  loggingSuggestion,
   onClose,
 }: {
   tip: CoachTip
@@ -41,6 +42,8 @@ export default function CoachNext({
   onFridgeSnap?: () => void
   /** One-tap logging: a tapped suggestion opens a pre-filled meal card. */
   onLogSuggestion?: (suggestion: string) => void
+  /** Which suggestion is being logged right now — chip press feedback. */
+  loggingSuggestion?: string | null
   onClose: () => void
 }) {
   const showFridge = !!fridgeAction && !!onFridgeSnap
@@ -93,9 +96,19 @@ export default function CoachNext({
                 <button
                   key={i}
                   onClick={() => onLogSuggestion(s)}
+                  disabled={!!loggingSuggestion}
                   title={`Log "${s}"`}
-                  className="bg-surface-2 border border-hair rounded-full px-2.5 py-1 text-[11px] font-medium text-ink-dim transition-all duration-150 ease-spring hover:border-protein/40 hover:text-ink active:scale-95"
+                  className={`flex items-center gap-1.5 bg-surface-2 border border-hair rounded-full px-2.5 py-1 text-[11px] font-medium text-ink-dim transition-all duration-150 ease-spring hover:border-protein/40 hover:text-ink active:scale-95 disabled:cursor-wait ${
+                    loggingSuggestion
+                      ? loggingSuggestion === s
+                        ? "border-protein/50 text-ink"
+                        : "opacity-50"
+                      : ""
+                  }`}
                 >
+                  {loggingSuggestion === s && (
+                    <Loader2 size={12} className="animate-spin shrink-0" />
+                  )}
                   {s}
                 </button>
               ) : (

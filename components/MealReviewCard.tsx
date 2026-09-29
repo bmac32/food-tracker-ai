@@ -98,6 +98,10 @@ export default function MealReviewCard({
 }: Props) {
   const [items, setItems] = useState<FoodItem[]>(() => toFoodItems(analysis))
   const [newFood, setNewFood] = useState("")
+  // Hooks must stay above the early return — hook order has to be identical
+  // on every render.
+  const [addingFood, setAddingFood] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
 
   // Portion data only exists on fresh analyses (with food_items).
   const hasPortions = items.some((i) => i.grams > 0 || i.per100)
@@ -122,15 +126,16 @@ export default function MealReviewCard({
     setItems((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const [addingFood, setAddingFood] = useState(false)
-
   // Added ingredients go through the same truth pipeline as the analysis
   // (her correction -> USDA -> AI estimate) instead of landing as blank
   // rows — so they show up in portions and totals, marked "~" like the rest.
+  // If the lookup fails, the row is still added (her text isn't lost) but an
+  // honest note says so instead of silently showing 0%.
   const handleAdd = async () => {
     if (!newFood.trim() || addingFood) return
     const name = newFood.trim()
     setAddingFood(true)
+    setAddError(null)
     const blank = (): FoodItem => ({
       item: name,
       grams: 0,
@@ -151,6 +156,9 @@ export default function MealReviewCard({
       const resolved = Array.isArray(data?.food_items) ? data.food_items : []
       if (!res.ok || resolved.length === 0) {
         setItems((prev) => [...prev, blank()])
+        setAddError(
+          `Couldn't fetch nutrition for "${name}" — added without macros. Try again in a bit.`
+        )
       } else {
         setItems((prev) => [
           ...prev,
@@ -176,6 +184,9 @@ export default function MealReviewCard({
       }
     } catch {
       setItems((prev) => [...prev, blank()])
+      setAddError(
+        `Couldn't fetch nutrition for "${name}" — added without macros. Try again in a bit.`
+      )
     } finally {
       setAddingFood(false)
       setNewFood("")
@@ -353,7 +364,10 @@ export default function MealReviewCard({
           <div className="flex gap-2 mt-3">
             <input
               value={newFood}
-              onChange={(e) => setNewFood(e.target.value)}
+              onChange={(e) => {
+                setNewFood(e.target.value)
+                setAddError(null)
+              }}
               placeholder="Add ingredient"
               className="flex-1 bg-ground border border-hair rounded-lg px-3 py-2 text-xs text-ink outline-none transition focus:border-ink/40"
             />
@@ -365,6 +379,9 @@ export default function MealReviewCard({
               {addingFood ? "…" : "Add"}
             </button>
           </div>
+          {addError && (
+            <p className="text-[11px] text-ink-faint mt-1.5">{addError}</p>
+          )}
         </div>
 
         {/* MACROS — "~" when any item is still an AI estimate */}

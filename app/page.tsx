@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabase"
 import { getSmartFoodImages, fallbackSet } from "@/lib/getSmartFoodImage"
@@ -54,6 +54,11 @@ export default function Home() {
   const [photoIndex, setPhotoIndex] = useState(0)
   const photoUrl = photoUrls[photoIndex] ?? null
   const [analyzing, setAnalyzing] = useState(false)
+  // Which coach suggestion is being logged right now (chip press feedback).
+  const [loggingSuggestion, setLoggingSuggestion] = useState<string | null>(null)
+  // Scroll target for the pending review card — a suggestion tap opens it
+  // below the coach card, out of view, so bring it into view on open.
+  const reviewCardRef = useRef<HTMLDivElement>(null)
 
   const [refreshFeed, setRefreshFeed] = useState(0)
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -88,6 +93,45 @@ export default function Home() {
   // Under-fueling opinion card (backlog #10) — replaces the normal tip on
   // the save where the pattern fires, at most once per 7 days.
   const [underfuelCard, setUnderfuelCard] = useState<UnderfuelCard | null>(null)
+
+  // Coach kill switch (backlog #8): master opt-out of ALL coach cards,
+  // flipped from the person-icon menu. Defaults on; synced across devices
+  // via user_profiles.coach_enabled. The ref guards fetches (no wasted
+  // model calls when off); the state gates rendering.
+  const [coachEnabled, setCoachEnabled] = useState(true)
+  const coachEnabledRef = useRef(true)
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (!user) return
+        const { data } = await supabase
+          .from("user_profiles")
+          .select("coach_enabled")
+          .eq("user_id", user.id)
+          .maybeSingle()
+        const enabled = data?.coach_enabled ?? true
+        coachEnabledRef.current = enabled
+        setCoachEnabled(enabled)
+      } catch {}
+    }
+    load()
+    const onChange = (e: Event) => {
+      const enabled = (e as CustomEvent<boolean>).detail ?? true
+      coachEnabledRef.current = enabled
+      setCoachEnabled(enabled)
+      // Turning it off hides any coach card already on screen, immediately.
+      if (!enabled) {
+        setCoachTip(null)
+        setUnderfuelCard(null)
+        setCoachWorkout(null)
+      }
+    }
+    window.addEventListener("coach-enabled-changed", onChange)
+    return () => window.removeEventListener("coach-enabled-changed", onChange)
+  }, [])
 
   // Continuous 0→1 scroll progress (not a hard threshold) so the header
   // collapses in lockstep with the scroll, like iOS's large-title behavior,
@@ -275,6 +319,19 @@ export default function Home() {
     }
   }
 
+  // Bring the pending review card into view whenever a new analysis lands —
+  // a tapped suggestion opens it below the coach card, hidden below the fold.
+  useEffect(() => {
+    if (analysis && reviewCardRef.current) {
+      const el = reviewCardRef.current
+      // Let the card mount and layout settle before scrolling to it.
+      const t = requestAnimationFrame(() =>
+        el.scrollIntoView({ behavior: "smooth", block: "start" })
+      )
+      return () => cancelAnimationFrame(t)
+    }
+  }, [analysis])
+
   // -------------------------
   // 👆 ONE-TAP SUGGESTION LOGGING (backlog #11)
   // A tapped coach suggestion becomes a pending meal: the suggestion text is
@@ -287,6 +344,7 @@ export default function Home() {
 
     setAnalyzing(true)
     setAnalysisError(null)
+    setLoggingSuggestion(suggestion.trim())
 
     try {
       const res = await fetch("/api/meals/analyze", {
@@ -343,6 +401,7 @@ export default function Home() {
       setAnalysisError("Couldn't prepare that suggestion — please try again.")
     } finally {
       setAnalyzing(false)
+      setLoggingSuggestion(null)
     }
   }
 
@@ -577,6 +636,9 @@ export default function Home() {
   const UNDERFUEL_COOLDOWN_MS = 7 * 24 * 3600 * 1000
 
   const fetchCoachTip = async () => {
+    // Kill switch (backlog #8): coach off means no fetch at all — no card,
+    // no under-fuel opinion, no wasted model call.
+    if (!coachEnabledRef.current) return
     // Only for today — backfilling a past day doesn't need "next meal" advice.
     const today = new Date()
     const viewing = new Date(currentDate)
@@ -723,6 +785,9 @@ export default function Home() {
     const end = new Date(viewing)
     end.setHours(23, 59, 59, 999)
 
+    // Kill switch (backlog #8): no workout coach card when the coach is off.
+    if (!coachEnabledRef.current) return
+
     try {
       const params = new URLSearchParams({
         type: w.workoutType,
@@ -843,7 +908,7 @@ export default function Home() {
 
     <main className="relative z-10 max-w-xl mx-auto px-6 pt-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] space-y-6 min-h-screen">
 
-      {coachTip && !analysis && (
+      {coachTip && coachEnabled && !analysis && (
         <CoachNext
           tip={coachTip.tip}
           nextMeal={coachTip.nextMeal}
@@ -852,18 +917,19 @@ export default function Home() {
           fridgeAction={coachTip.fridgeAction}
           onFridgeSnap={() => setFridgeOpen(true)}
           onLogSuggestion={logSuggestion}
+          loggingSuggestion={loggingSuggestion}
           onClose={() => setCoachTip(null)}
         />
       )}
 
-      {underfuelCard && !analysis && (
+      {underfuelCard && coachEnabled && !analysis && (
         <CoachUnderfuel
           card={underfuelCard}
           onClose={() => setUnderfuelCard(null)}
         />
       )}
 
-      {coachWorkout && !analysis && (
+      {coachWorkout && coachEnabled && !analysis && (
         <CoachWorkout
           tip={coachWorkout.tip}
           workoutType={coachWorkout.workoutType}
@@ -1003,28 +1069,30 @@ export default function Home() {
       )}
 
       {photoUrl && analysis && (
-        <MealReviewCard
-          images={photoUrls}
-          imageIndex={photoIndex}
-          onImageChange={setPhotoIndex}
-          analysis={analysis}
-          note={note}
-          setNote={setNote}
-          onSave={saveMeal}
-          analyzing={analyzing}
-          isSaving={isSaving}
-          saveSuccess={saveSuccess}
-          onDislikePhoto={handleDislikePhoto}
-          onNoneOfThesePhotos={handleNoneOfThesePhotos}
-          isUserPhoto={isUserPhoto}
-          onCancel={() => {
-            setPhotoUrls([])
-            setPhotoIndex(0)
-            setIsUserPhoto(false)
-            setAnalysis(null)
-            setAnalysisError(null)
-          } } 
-        />
+        <div ref={reviewCardRef} className="scroll-mt-4">
+          <MealReviewCard
+            images={photoUrls}
+            imageIndex={photoIndex}
+            onImageChange={setPhotoIndex}
+            analysis={analysis}
+            note={note}
+            setNote={setNote}
+            onSave={saveMeal}
+            analyzing={analyzing}
+            isSaving={isSaving}
+            saveSuccess={saveSuccess}
+            onDislikePhoto={handleDislikePhoto}
+            onNoneOfThesePhotos={handleNoneOfThesePhotos}
+            isUserPhoto={isUserPhoto}
+            onCancel={() => {
+              setPhotoUrls([])
+              setPhotoIndex(0)
+              setIsUserPhoto(false)
+              setAnalysis(null)
+              setAnalysisError(null)
+            } }
+          />
+        </div>
       )}
 
       <MealFeed
