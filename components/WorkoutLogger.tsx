@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Sparkles } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { getUserProfile, lbsToKg } from "@/lib/getUserProfile"
-import { getWorkoutImage } from "@/lib/getWorkoutImage"
+import { getWorkoutImages } from "@/lib/getWorkoutImage"
 import {
   WORKOUT_TYPES,
   estimateCaloriesBurned,
@@ -29,7 +29,9 @@ export default function WorkoutLogger({ open, onClose, onSaved, currentDate }: P
   const [step, setStep] = useState<Step>("type")
   const [workoutType, setWorkoutType] = useState<WorkoutType | null>(null)
   const [duration, setDuration] = useState("")
-  const [imageUrl, setImageUrl] = useState("")
+  // Candidate photos the user picks from (swipe/chevrons, like meals).
+  const [images, setImages] = useState<string[]>([])
+  const [imageIndex, setImageIndex] = useState(0)
   const [calories, setCalories] = useState(0)
   const [note, setNote] = useState("")
   const [isSaving, setIsSaving] = useState(false)
@@ -40,7 +42,8 @@ export default function WorkoutLogger({ open, onClose, onSaved, currentDate }: P
       setStep("type")
       setWorkoutType(null)
       setDuration("")
-      setImageUrl("")
+      setImages([])
+      setImageIndex(0)
       setCalories(0)
       setNote("")
       setIsSaving(false)
@@ -62,15 +65,16 @@ export default function WorkoutLogger({ open, onClose, onSaved, currentDate }: P
     setStep("loading")
 
     try {
-      const [profile, fetchedImage] = await Promise.all([
+      const [profile, fetchedImages] = await Promise.all([
         getUserProfile(),
-        getWorkoutImage(workoutType),
+        getWorkoutImages(workoutType),
       ])
 
       const weightKg = profile?.weight ? lbsToKg(profile.weight) : undefined
       const estimate = estimateCaloriesBurned(workoutType, minutes, weightKg)
 
-      setImageUrl(fetchedImage)
+      setImages(fetchedImages)
+      setImageIndex(0)
       setCalories(estimate)
       setStep("review")
     } catch (err) {
@@ -107,7 +111,9 @@ export default function WorkoutLogger({ open, onClose, onSaved, currentDate }: P
           workout_type: workoutType,
           duration_minutes: Math.round(parseFloat(duration)),
           calories_burned: calories,
-          photo_url: imageUrl,
+          photo_url: images[imageIndex] || null,
+          // Saved so the feed card can show the same picker + refresh later.
+          photo_candidates: images,
           note: note || null,
         },
       ])
@@ -222,7 +228,9 @@ export default function WorkoutLogger({ open, onClose, onSaved, currentDate }: P
       {step === "review" && workoutType && (
         <div className="w-full max-w-sm">
           <WorkoutReviewCard
-            imageUrl={imageUrl}
+            images={images}
+            imageIndex={imageIndex}
+            onImageChange={setImageIndex}
             workoutType={workoutType}
             durationMinutes={Math.round(parseFloat(duration))}
             calories={calories}
