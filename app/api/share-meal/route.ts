@@ -27,10 +27,10 @@ function getResend() {
   return new Resend(key)
 }
 
-// Override in Vercel env once a custom domain is verified in Resend.
-// Until then, Resend's sandbox only delivers to the account owner's email.
+// Sender override lives in Vercel env (RESEND_FROM_EMAIL); the fallback
+// below matches the verified domain.
 const FROM_EMAIL =
-  process.env.RESEND_FROM_EMAIL ?? "FoodTracker <onboarding@resend.dev>"
+  process.env.RESEND_FROM_EMAIL ?? "Foodency <login@foodency.com>"
 
 function escapeHtml(value: string): string {
   return String(value)
