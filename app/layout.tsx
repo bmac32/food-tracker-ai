@@ -8,8 +8,8 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "AI Food Tracker",
-  description: "Track your meals with AI — simple, fast, and clear.",
+  title: "Foodency",
+  description: "Learn your way around food — photo-first, shame-free nutrition.",
 }
 
 // Proper mobile viewport: device-width scaling, notch/home-indicator

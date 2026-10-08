@@ -56,20 +56,28 @@ export default function LoginPage() {
         <div className="absolute w-[400px] h-[400px] bg-fat/10 blur-[120px] rounded-full bottom-[-100px] right-[-100px] animate-pulse" />
       </div>
 
-      <div className="relative z-10 w-full max-w-md space-y-6">
+      <div className="relative z-10 w-full max-w-md space-y-8">
 
         {/* HEADER */}
-        <div className="text-center space-y-2">
-          <div className="text-xs tracking-widest text-ink-faint">
-            AI NUTRITION
+        <div className="text-center space-y-3">
+          <div className="text-xs tracking-[0.25em] text-ink-faint">
+            MEET FOODENCY
           </div>
 
-          <h1 className="text-2xl font-bold tracking-tight">
-            Track smarter. Eat better.
+          <h1 className="text-4xl font-bold tracking-tight leading-[1.15]">
+            Learn your way
+            <br />
+            <span className="text-ink-dim font-semibold">around food.</span>
           </h1>
 
-          <p className="text-sm text-ink-dim">
-            Snap a meal. Get instant nutrition insights.
+          <p className="text-base text-ink-dim leading-relaxed">
+            <span className="text-ink font-semibold">Build your food fluency</span>
+            <br />
+            one photo at a time.
+          </p>
+
+          <p className="text-[11px] tracking-[0.2em] text-ink-faint uppercase pt-1">
+            No shame · no streaks · no red numbers
           </p>
         </div>
 
@@ -122,12 +130,6 @@ export default function LoginPage() {
           )}
         </div>
 
-        {/* VALUE PROPS */}
-        <div className="text-center text-xs text-ink-faint space-y-1">
-          <p>• AI analyzes your meals instantly</p>
-          <p>• Track calories, protein, carbs, and fat</p>
-          <p>• Build consistent, healthy habits</p>
-        </div>
       </div>
 
       {/* ✨ SHIMMER KEYFRAMES */}

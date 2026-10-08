@@ -11,9 +11,9 @@ export default function TermsPage() {
         <section className="space-y-2 text-sm text-ink-dim leading-relaxed">
           <h2 className="text-base font-semibold text-ink">The service</h2>
           <p>
-            AI Food Tracker lets you log meals with photos or text, receive
-            AI-generated nutrition estimates, track workouts, and share meals
-            with others. You must be at least 13 years old to use the service.
+            Foodency lets you log meals with photos or text, receive
+            AI-generated nutrition estimates, log workouts, and see your
+            patterns over time. You must be at least 13 years old to use the service.
           </p>
         </section>
 
