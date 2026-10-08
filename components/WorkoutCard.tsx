@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Flame, SlidersHorizontal } from "lucide-react"
+import { Flame, SlidersHorizontal, RefreshCw } from "lucide-react"
 import { getUserProfile, lbsToKg } from "@/lib/getUserProfile"
 import {
   WORKOUT_META_BY_TYPE,
@@ -9,6 +9,8 @@ import {
   type WorkoutType,
 } from "@/lib/workoutMeta"
 import { workoutFallback } from "@/lib/workoutImageFallbacks"
+import { getWorkoutImages } from "@/lib/getWorkoutImage"
+import MealImageCarousel from "./MealImageCarousel"
 
 type Workout = {
   id: string
@@ -17,6 +19,7 @@ type Workout = {
   duration_minutes: number
   calories_burned: number
   photo_url: string | null
+  photo_candidates: string[] | null
   note: string | null
 }
 
@@ -51,7 +54,52 @@ export default function WorkoutCard({
     workout.photo_url && !workout.photo_url.includes(KNOWN_FOOD_FALLBACK)
       ? workout.photo_url
       : null
-  const imageSrc = storedUrl || workoutFallback(workout.workout_type)
+
+  // ---- Swipeable photo candidates (same pattern as meal cards) -----------
+  // New workouts save a `photo_candidates` array; older ones fall back to
+  // their single photo_url. The selected index is derived from where
+  // photo_url sits inside the candidates, so no extra state is needed.
+  const initialCandidates = (): string[] => {
+    const c = workout.photo_candidates
+    if (Array.isArray(c) && c.length > 0) {
+      return c.filter((u) => typeof u === "string" && u.length > 0)
+    }
+    return storedUrl ? [storedUrl] : []
+  }
+  const [candidates, setCandidates] = useState<string[]>(initialCandidates)
+  const [refreshing, setRefreshing] = useState(false)
+  // Set on swipe for an instant visual while onUpdate persists upstream.
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null)
+
+  const shown = candidates.length > 0 ? candidates : [workoutFallback(workout.workout_type)]
+  const effectiveUrl = pendingUrl || storedUrl || shown[0]
+  const photoIdx = Math.max(shown.indexOf(effectiveUrl), 0)
+
+  const handlePhotoChange = async (i: number) => {
+    const url = shown[i]
+    if (!url || url === effectiveUrl) return
+    setPendingUrl(url)
+    await onUpdate({ photo_url: url })
+    setPendingUrl(null)
+  }
+
+  // "Generate new ones if it's off" — fetch a fresh set of options. The
+  // route rotates query variants and result pages per request, so this
+  // returns different photos than the last batch.
+  const handleRefreshPhotos = async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      const urls = await getWorkoutImages(workout.workout_type)
+      setCandidates(urls)
+      setPendingUrl(null)
+      await onUpdate({ photo_url: urls[0], photo_candidates: urls })
+    } catch (err) {
+      console.error("WORKOUT PHOTO REFRESH FAILED:", err)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const startEditing = () => {
     setEditDuration(String(workout.duration_minutes))
@@ -102,9 +150,15 @@ export default function WorkoutCard({
         }`}
       >
       <div className="relative">
-        <img src={imageSrc} className="w-full h-[260px] object-cover" />
+        <MealImageCarousel
+          images={shown}
+          index={photoIdx}
+          onChange={handlePhotoChange}
+          className="h-[260px]"
+          alt={`${meta?.label || "Workout"} photo`}
+        />
 
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
 
         <button
           onClick={startEditing}
@@ -118,6 +172,16 @@ export default function WorkoutCard({
           className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink transition-all duration-150 ease-spring hover:bg-burn/30 hover:border-burn/50 active:scale-90"
         >
           ✕
+        </button>
+
+        {/* New photos — fetches a fresh set of image options for this workout */}
+        <button
+          onClick={handleRefreshPhotos}
+          disabled={refreshing}
+          title="New photos"
+          className="absolute bottom-3 right-4 z-10 w-9 h-9 rounded-full bg-black/45 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink transition-all duration-150 ease-spring hover:bg-black/60 active:scale-90 disabled:opacity-60"
+        >
+          <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} />
         </button>
 
         <div className="absolute top-3 left-14 flex items-center gap-1.5 bg-burn/20 border border-burn/40 backdrop-blur-md px-2.5 py-1 rounded-full">

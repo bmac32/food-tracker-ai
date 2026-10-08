@@ -4,9 +4,13 @@ import { useState } from "react"
 import { Flame } from "lucide-react"
 import { WORKOUT_META_BY_TYPE, type WorkoutType } from "@/lib/workoutMeta"
 import { workoutFallback } from "@/lib/workoutImageFallbacks"
+import MealImageCarousel from "./MealImageCarousel"
 
 type Props = {
-  imageUrl: string
+  /** Candidate photos; the user swipes/picks the one they like. */
+  images: string[]
+  imageIndex: number
+  onImageChange: (i: number) => void
   workoutType: WorkoutType
   durationMinutes: number
   calories: number
@@ -20,7 +24,9 @@ type Props = {
 }
 
 export default function WorkoutReviewCard({
-  imageUrl,
+  images,
+  imageIndex,
+  onImageChange,
   workoutType,
   durationMinutes,
   calories,
@@ -50,8 +56,9 @@ export default function WorkoutReviewCard({
         ${saveSuccess ? "scale-[0.98] opacity-60" : ""}
       `}
     >
-      {/* IMAGE */}
-      <div className="relative">
+      {/* IMAGE — swipeable candidates, same picker as the meal photo flow.
+          The selected photo is what gets saved with the workout. */}
+      <div className="relative" onLoadCapture={() => setImgLoaded(true)}>
         <button
           onClick={onCancel}
           className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink text-sm transition-all duration-150 ease-spring hover:bg-black/60 hover:scale-110 active:scale-90"
@@ -63,14 +70,12 @@ export default function WorkoutReviewCard({
           <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-surface via-surface-2 to-surface" />
         )}
 
-        <img
-          src={imageUrl || workoutFallback(workoutType)}
-          onLoad={() => setImgLoaded(true)}
-          onError={(e) => {
-            e.currentTarget.src = workoutFallback(workoutType)
-            setImgLoaded(true)
-          }}
-          className="w-full h-[340px] object-cover transition-opacity duration-500"
+        <MealImageCarousel
+          images={images.length > 0 ? images : [workoutFallback(workoutType)]}
+          index={imageIndex}
+          onChange={onImageChange}
+          className="h-[340px]"
+          alt={`${meta?.label || "Workout"} photo`}
         />
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
