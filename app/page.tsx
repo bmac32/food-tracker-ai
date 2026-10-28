@@ -19,7 +19,9 @@ import CoachUnderfuel, { UnderfuelCard } from "@/components/CoachUnderfuel"
 import FridgeSuggest, { FridgeSuggestion } from "@/components/FridgeSuggest"
 import UserInfo from "@/components/UserInfo"
 import WorkoutLogger from "@/components/WorkoutLogger"
+import UsualsCard from "@/components/UsualsCard"
 import type { WorkoutType } from "@/lib/workoutMeta"
+import type { Usual } from "@/lib/usuals"
 
 type Analysis = {
   meal_name: string
@@ -577,6 +579,105 @@ export default function Home() {
   }
 
   // -------------------------
+  // 🍽️ SAME AS USUAL (Feature 2) — one-tap re-log of a usual meal.
+  // Mirrors saveMeal's insert shape but skips the review card entirely:
+  // the usual IS the analysis. Kept separate so the review flow is
+  // untouched. Throws on failure so the card's button resets.
+  // -------------------------
+  const logUsual = async (usual: Usual) => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      alert("Not logged in")
+      throw new Error("Not logged in")
+    }
+
+    const analysis = usual.analysis
+    if (!analysis) throw new Error("Usual has no meal data")
+
+    // Same viewed-day stamp as saveMeal: the day being viewed, not
+    // necessarily today, keeping the current time-of-day.
+    const now = new Date()
+    const stamp = new Date(currentDate)
+    stamp.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds())
+    const createdAt = stamp.toISOString()
+
+    const safePhoto =
+      usual.photo_url ||
+      "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
+
+    const optimisticMeal = {
+      id: Date.now(),
+      created_at: createdAt,
+      photo_url: safePhoto,
+      photo_candidates: [safePhoto],
+      ai_analysis: analysis,
+      calories: toNumber(analysis.calories),
+      protein: toNumber(analysis.protein),
+      carbs: toNumber(analysis.carbs),
+      fat: toNumber(analysis.fat),
+      note: null,
+    }
+
+    setOptimisticMeals((prev) => [optimisticMeal, ...prev])
+
+    const { error } = await supabase.from("meals").insert([
+      {
+        user_id: user.id,
+        created_at: optimisticMeal.created_at,
+        photo_url: safePhoto,
+        photo_candidates: [safePhoto],
+        note: null,
+        meal_type: "meal",
+        ai_analysis: optimisticMeal.ai_analysis,
+        calories: optimisticMeal.calories,
+        protein: optimisticMeal.protein,
+        carbs: optimisticMeal.carbs,
+        fat: optimisticMeal.fat,
+      },
+    ])
+
+    if (error) {
+      console.error("USUAL SAVE ERROR:", error)
+      setOptimisticMeals((prev) => prev.filter((m) => m.id !== optimisticMeal.id))
+      throw error
+    }
+
+    // Silent portion learning, same as a normal save: re-logging a
+    // usual reinforces it. Fire-and-forget, never blocks the save.
+    try {
+      const items = Array.isArray((analysis as any)?.food_items)
+        ? (analysis as any).food_items
+        : []
+      for (const f of items) {
+        const g = Number(f?.grams) || 0
+        const label = String(f?.item || "").trim()
+        if (g > 0 && label) {
+          supabase
+            .rpc("record_portion", {
+              p_food_key: normalizeFoodKey(label),
+              p_food_label: label.slice(0, 80),
+              p_grams: g,
+              p_taught: false,
+            })
+            .then(({ error }: any) => {
+              if (error) console.error("PORTION RECORD FAILED:", error)
+            })
+        }
+      }
+    } catch (e) {
+      console.error("PORTION RECORD FAILED:", e)
+    }
+
+    // Live coach: guidance for the next meal, based on today so far.
+    fetchCoachTip()
+
+    setRefreshFeed((prev) => prev + 1)
+  }
+
+  // -------------------------
   // 🎯 LIVE COACH — guidance for the NEXT meal, right after saving
   // -------------------------
   const PENDING_SUGGESTION_KEY = "pendingCoachSuggestion"
@@ -1093,6 +1194,14 @@ export default function Home() {
             } }
           />
         </div>
+      )}
+
+      {!analysis && (
+        <UsualsCard
+          viewedDate={currentDate}
+          refreshTrigger={refreshFeed}
+          onLog={logUsual}
+        />
       )}
 
       <MealFeed
