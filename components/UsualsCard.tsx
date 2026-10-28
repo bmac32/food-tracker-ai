@@ -6,18 +6,18 @@ import { normalizeFoodKey } from "@/lib/foodTruth"
 import type { Usual } from "@/lib/usuals"
 
 /**
- * Same as usual (Feature 2) — the Coast interaction, approved mockup
- * 2026-10-28.
+ * Same as usual (Feature 2) — the Coast interaction.
  *
- * Shows her most repeated meals (3+ logs in 60 days, top 3) as one-tap
- * log rows. Tapping Log replays the meal's latest analysis and photo
- * through the page's save path — no review card, no typing, no photo.
+ * Renders the usuals list ONLY: the page owns the chrome (the "Log a
+ * meal" chooser button opens this inside a modal). Rows are her most
+ * repeated meals (3+ logs in 60 days, top 3). Tapping Log replays the
+ * meal's latest analysis and photo through the page's save path — no
+ * review card, no typing, no photo.
  *
  * Self-contained on purpose: it fetches its own usuals and the viewed
  * day's meals (to mark what's already logged) instead of plumbing
- * through MealFeed. On any failure it renders nothing — a shortcut must
- * never break the day view. Dismissal is per viewed day, stored locally,
- * with a Show again link.
+ * through MealFeed. On fetch failure it renders a quiet empty line —
+ * a shortcut must never break the log flow.
  */
 export default function UsualsCard({
   viewedDate,
@@ -32,19 +32,6 @@ export default function UsualsCard({
   const [loggedNames, setLoggedNames] = useState<Set<string>>(new Set())
   const [loggedKeys, setLoggedKeys] = useState<Set<string>>(new Set())
   const [loggingKey, setLoggingKey] = useState<string | null>(null)
-  const [dismissed, setDismissed] = useState(false)
-
-  const dayKey = viewedDate.toDateString()
-
-  useEffect(() => {
-    try {
-      setDismissed(
-        localStorage.getItem(`usuals-dismissed:${dayKey}`) === "1"
-      )
-    } catch {
-      setDismissed(false)
-    }
-  }, [dayKey])
 
   useEffect(() => {
     let cancelled = false
@@ -61,7 +48,7 @@ export default function UsualsCard({
     }
   }, [refreshTrigger])
 
-  // What's already on the viewed day, so the card never offers a meal
+  // What's already on the viewed day, so the list never offers a meal
   // she already ate today. Refetches after every save via refreshTrigger.
   useEffect(() => {
     let cancelled = false
@@ -104,20 +91,6 @@ export default function UsualsCard({
     }
   }, [viewedDate, refreshTrigger])
 
-  const dismiss = () => {
-    try {
-      localStorage.setItem(`usuals-dismissed:${dayKey}`, "1")
-    } catch {}
-    setDismissed(true)
-  }
-
-  const showAgain = () => {
-    try {
-      localStorage.removeItem(`usuals-dismissed:${dayKey}`)
-    } catch {}
-    setDismissed(false)
-  }
-
   const handleLog = async (usual: Usual) => {
     const key = normalizeFoodKey(usual.meal_name)
     setLoggingKey(key)
@@ -131,36 +104,20 @@ export default function UsualsCard({
     }
   }
 
-  if (dismissed) {
+  if (usuals === null) {
+    return <p className="text-sm text-ink-dim">Loading your usuals...</p>
+  }
+
+  if (usuals.length === 0) {
     return (
-      <div className="bg-surface border border-hair rounded-[22px] p-4 text-sm text-ink-dim">
-        Usuals hidden for today. They&apos;ll be back tomorrow.{" "}
-        <button
-          onClick={showAgain}
-          className="font-bold text-ink underline underline-offset-2"
-        >
-          Show again
-        </button>
-      </div>
+      <p className="text-sm text-ink-dim leading-relaxed">
+        No repeats yet — log a meal 3 times and it&apos;ll show up here.
+      </p>
     )
   }
 
-  if (!usuals || usuals.length === 0) return null
-
   return (
-    <div className="bg-surface border border-hair rounded-[22px] p-4 space-y-3 relative">
-      <button
-        onClick={dismiss}
-        aria-label="Dismiss usuals for today"
-        className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center text-ink-dim text-sm hover:bg-surface-2 active:scale-90"
-      >
-        ✕
-      </button>
-      <h2 className="text-base font-bold text-ink pr-8">Same as usual?</h2>
-      <p className="text-xs text-ink-dim -mt-2 leading-relaxed">
-        From meals you&apos;ve logged 3 or more times. One tap logs it, no
-        photo or typing needed. Macros come from your last log.
-      </p>
+    <div>
       {usuals.map((u) => {
         const key = normalizeFoodKey(u.meal_name)
         const done = loggedKeys.has(key) || loggedNames.has(key)
@@ -168,7 +125,7 @@ export default function UsualsCard({
         return (
           <div
             key={key}
-            className="flex gap-3 items-center pt-3 border-t border-hair"
+            className="flex gap-3 items-center py-3 border-t border-hair first:border-t-0 first:pt-0"
           >
             {u.photo_url && (
               <img
