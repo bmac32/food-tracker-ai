@@ -78,6 +78,7 @@ export default function Home() {
   const [scrollProgress, setScrollProgress] = useState(0)
   const [workoutLoggerOpen, setWorkoutLoggerOpen] = useState(false)
   const [mealChooserOpen, setMealChooserOpen] = useState(false)
+  const [usualsOpen, setUsualsOpen] = useState(false)
   const [fridgeOpen, setFridgeOpen] = useState(false)
   const [coachTip, setCoachTip] = useState<{
     tip: CoachTip
@@ -1102,6 +1103,49 @@ export default function Home() {
                 </span>
               </span>
             </button>
+
+            <button
+              onClick={() => {
+                setMealChooserOpen(false)
+                setUsualsOpen(true)
+              }}
+              className="group w-full flex items-center gap-3 bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-ink-faint active:scale-[0.98]"
+            >
+              <span className="w-8 h-8 rounded-full bg-surface border border-hair-strong flex items-center justify-center text-sm shrink-0 transition-transform duration-300 ease-spring group-active:rotate-12">
+                ↻
+              </span>
+              <span>
+                <span className="block">Same as usual</span>
+                <span className="block text-xs font-normal text-ink-faint mt-0.5">
+                  Pick from meals you&apos;ve logged 3 or more times
+                </span>
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {usualsOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-surface border border-hair rounded-[22px] p-6 w-[90%] max-w-sm space-y-4 relative animate-fade-scale-in max-h-[80vh] overflow-y-auto">
+            <button
+              onClick={() => setUsualsOpen(false)}
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink text-sm transition-all duration-150 ease-spring hover:bg-black/70 active:scale-90"
+            >
+              ✕
+            </button>
+
+            <h2 className="text-lg font-bold text-ink">Same as usual?</h2>
+            <p className="text-xs text-ink-faint -mt-3">One tap logs it. Macros come from your last log.</p>
+
+            <UsualsCard
+              viewedDate={currentDate}
+              refreshTrigger={refreshFeed}
+              onLog={async (u) => {
+                await logUsual(u)
+                setUsualsOpen(false)
+              }}
+            />
           </div>
         </div>
       )}
