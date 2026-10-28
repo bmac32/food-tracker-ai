@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getRouteUser, createServerSupabase } from "@/lib/supabaseServer"
-import { significantWords } from "@/lib/photoLearning"
+import { significantWords, dishKey } from "@/lib/photoLearning"
 
 /**
  * GET /api/food-image?q=<query>&exclude=<csv>
@@ -118,6 +118,44 @@ async function learnedUrls(
   }
   return { liked, disliked }
 }
+
+/**
+ * Her own photos first for repeats (backlog #27, item 4): the most
+ * accurate photo of her meal is hers. Exact dish match ONLY — never
+ * fuzzy. Her uploads stay out of other dishes' candidates (see the
+ * /meal-photos/ guard in learnedUrls): a pizza photo must never lead
+ * a pasta search. Most recent upload of this exact dish wins.
+ */
+async function ownPhoto(
+  userId: string,
+  dish: string,
+  exclude: Set<string>
+): Promise<string | null> {
+  if (!dish) return null
+  try {
+    const supabase = await createServerSupabase()
+    const { data, error } = await supabase
+      .from("meals")
+      .select("photo_url, ai_analysis")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(200)
+    if (error || !data) return null
+    for (const row of data) {
+      const url = String((row as any).photo_url || "").trim()
+      if (!url || !url.includes("/meal-photos/")) continue
+      if (isExcluded(url, exclude)) continue
+      const ai: any = (row as any).ai_analysis
+      if (!ai) continue
+      const key = dishKey(ai.meal_name, ai.foods)
+      if (key && key === dish) return url
+    }
+  } catch (err) {
+    console.error("OWN PHOTO LOOKUP FAILED:", err)
+  }
+  return null
+}
+
 async function unsplashSearch(
   q: string,
   accessKey: string,
@@ -250,8 +288,11 @@ export async function GET(req: Request) {
     const id = photoId(u)
     if (id) exclude.add(id)
   }
+  // Her own photo of this exact dish leads everything (see ownPhoto).
+  const own = dish ? await ownPhoto(user.id, dish, exclude) : null
   // Past picks are trusted as-is (she already approved them); still cap at 6.
   let urls: string[] = liked.slice(0, 6)
+  if (own) urls = [own, ...urls.filter((u) => u !== own)].slice(0, 6)
 
   // 1. Unsplash, when configured.
   const accessKey = process.env.UNSPLASH_ACCESS_KEY
@@ -261,6 +302,20 @@ export async function GET(req: Request) {
 
   // 2. Openverse — free, no key.
   if (!urls.length) urls = await openverseSearch(q, exclude)
+
+  // 2a. An own photo alone is not a carousel — fill behind it with fresh
+  // stock so a repeat still has alternatives. (Repeats WITH past picks
+  // keep the existing behavior: picks only, no fresh search.)
+  if (own && liked.length === 0 && urls.length === 1) {
+    const ex = new Set(exclude)
+    ex.add(own.trim())
+    const id = photoId(own)
+    if (id) ex.add(id)
+    let more: string[] = []
+    if (accessKey) more = await unsplashSearch(q, accessKey, ex)
+    if (!more.length) more = await openverseSearch(q, ex)
+    urls = [own, ...more].slice(0, 6)
+  }
 
   // 2b. Weak search fallback: if the full query returned almost nothing
   // (e.g. "almond flour crackers hummus cheese" — too specific for any
