@@ -662,6 +662,7 @@ const anyEstimated = meals.some((meal) => {
   return (
     <>
         <div
+          id="daily-summary-header"
           className="sticky top-0 z-40 bg-ground/95 backdrop-blur-md border-b border-hair"
           // Notch/Dynamic Island clearance when the page runs edge-to-edge
           // (viewport-fit=cover). env() is 0px where there's no notch.
