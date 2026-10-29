@@ -1222,12 +1222,12 @@ export default function Home() {
                 setMealChooserOpen(false)
                 setTextInputMode(true)
               }}
-              className="group w-full flex items-center gap-3 bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-ink-faint active:scale-[0.98]"
+              className="group w-full flex items-center gap-3 text-left bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-ink-faint active:scale-[0.98]"
             >
               <span className="w-8 h-8 rounded-full bg-surface border border-hair-strong flex items-center justify-center text-sm shrink-0 transition-transform duration-300 ease-spring group-active:rotate-12">
                 ✎
               </span>
-              <span>
+              <span className="flex-1 text-left">
                 <span className="block">Enter manually</span>
                 <span className="block text-xs font-normal text-ink-faint mt-0.5">
                   Describe your meal in words
@@ -1240,12 +1240,12 @@ export default function Home() {
                 setMealChooserOpen(false)
                 setUsualsOpen(true)
               }}
-              className="group w-full flex items-center gap-3 bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-ink-faint active:scale-[0.98]"
+              className="group w-full flex items-center gap-3 text-left bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-ink-faint active:scale-[0.98]"
             >
               <span className="w-8 h-8 rounded-full bg-surface border border-hair-strong flex items-center justify-center text-sm shrink-0 transition-transform duration-300 ease-spring group-active:rotate-12">
                 ↻
               </span>
-              <span>
+              <span className="flex-1 text-left">
                 <span className="block">Same as usual</span>
                 <span className="block text-xs font-normal text-ink-faint mt-0.5">
                   Pick from meals you&apos;ve logged 3 or more times
