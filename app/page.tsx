@@ -1090,90 +1090,6 @@ export default function Home() {
         </div>
       )}
 
-      {mealChooserOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
-          <div className="bg-surface border border-hair rounded-[22px] p-6 w-[90%] max-w-sm space-y-4 relative animate-fade-scale-in">
-            <button
-              onClick={() => setMealChooserOpen(false)}
-              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink text-sm transition-all duration-150 ease-spring hover:bg-black/70 active:scale-90"
-            >
-              ✕
-            </button>
-
-            <h2 className="text-lg font-bold text-ink">Log a meal</h2>
-            <p className="text-xs text-ink-faint -mt-3">How do you want to add it?</p>
-
-            <Upload
-              onFileSelect={(files) => {
-                setMealChooserOpen(false)
-                uploadAndAnalyze(files)
-              }}
-            />
-
-            <button
-              onClick={() => {
-                setMealChooserOpen(false)
-                setTextInputMode(true)
-              }}
-              className="group w-full flex items-center gap-3 bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-ink-faint active:scale-[0.98]"
-            >
-              <span className="w-8 h-8 rounded-full bg-surface border border-hair-strong flex items-center justify-center text-sm shrink-0 transition-transform duration-300 ease-spring group-active:rotate-12">
-                ✎
-              </span>
-              <span>
-                <span className="block">Enter manually</span>
-                <span className="block text-xs font-normal text-ink-faint mt-0.5">
-                  Describe your meal in words
-                </span>
-              </span>
-            </button>
-
-            <button
-              onClick={() => {
-                setMealChooserOpen(false)
-                setUsualsOpen(true)
-              }}
-              className="group w-full flex items-center gap-3 bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-ink-faint active:scale-[0.98]"
-            >
-              <span className="w-8 h-8 rounded-full bg-surface border border-hair-strong flex items-center justify-center text-sm shrink-0 transition-transform duration-300 ease-spring group-active:rotate-12">
-                ↻
-              </span>
-              <span>
-                <span className="block">Same as usual</span>
-                <span className="block text-xs font-normal text-ink-faint mt-0.5">
-                  Pick from meals you&apos;ve logged 3 or more times
-                </span>
-              </span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {usualsOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
-          <div className="bg-surface border border-hair rounded-[22px] p-6 w-[90%] max-w-sm space-y-4 relative animate-fade-scale-in max-h-[80vh] overflow-y-auto">
-            <button
-              onClick={() => setUsualsOpen(false)}
-              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink text-sm transition-all duration-150 ease-spring hover:bg-black/70 active:scale-90"
-            >
-              ✕
-            </button>
-
-            <h2 className="text-lg font-bold text-ink">Same as usual?</h2>
-            <p className="text-xs text-ink-faint -mt-3">One tap logs it. Macros come from your last log.</p>
-
-            <UsualsCard
-              viewedDate={currentDate}
-              refreshTrigger={refreshFeed}
-              onLog={async (u) => {
-                await logUsual(u)
-                setUsualsOpen(false)
-              }}
-            />
-          </div>
-        </div>
-      )}
-
       {analyzing && (
         <div className="bg-surface border border-hair rounded-[22px] overflow-hidden animate-fade-scale-in">
           <div className="relative h-[220px] overflow-hidden">
@@ -1279,6 +1195,90 @@ export default function Home() {
         onDeleteSuccess={() => setRefreshFeed((prev) => prev + 1)}
       />
 
+    </main>
+
+      {mealChooserOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-surface border border-hair rounded-[22px] p-6 w-[90%] max-w-sm space-y-4 relative animate-fade-scale-in">
+            <button
+              onClick={() => setMealChooserOpen(false)}
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink text-sm transition-all duration-150 ease-spring hover:bg-black/70 active:scale-90"
+            >
+              ✕
+            </button>
+
+            <h2 className="text-lg font-bold text-ink">Log a meal</h2>
+            <p className="text-xs text-ink-faint -mt-3">How do you want to add it?</p>
+
+            <Upload
+              onFileSelect={(files) => {
+                setMealChooserOpen(false)
+                uploadAndAnalyze(files)
+              }}
+            />
+
+            <button
+              onClick={() => {
+                setMealChooserOpen(false)
+                setTextInputMode(true)
+              }}
+              className="group w-full flex items-center gap-3 bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-ink-faint active:scale-[0.98]"
+            >
+              <span className="w-8 h-8 rounded-full bg-surface border border-hair-strong flex items-center justify-center text-sm shrink-0 transition-transform duration-300 ease-spring group-active:rotate-12">
+                ✎
+              </span>
+              <span>
+                <span className="block">Enter manually</span>
+                <span className="block text-xs font-normal text-ink-faint mt-0.5">
+                  Describe your meal in words
+                </span>
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                setMealChooserOpen(false)
+                setUsualsOpen(true)
+              }}
+              className="group w-full flex items-center gap-3 bg-surface-2 border border-hair rounded-xl px-4 py-3.5 text-sm font-bold text-ink transition-all duration-200 ease-spring hover:border-ink-faint active:scale-[0.98]"
+            >
+              <span className="w-8 h-8 rounded-full bg-surface border border-hair-strong flex items-center justify-center text-sm shrink-0 transition-transform duration-300 ease-spring group-active:rotate-12">
+                ↻
+              </span>
+              <span>
+                <span className="block">Same as usual</span>
+                <span className="block text-xs font-normal text-ink-faint mt-0.5">
+                  Pick from meals you&apos;ve logged 3 or more times
+                </span>
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+      {usualsOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-surface border border-hair rounded-[22px] p-6 w-[90%] max-w-sm space-y-4 relative animate-fade-scale-in max-h-[80vh] overflow-y-auto">
+            <button
+              onClick={() => setUsualsOpen(false)}
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-ink text-sm transition-all duration-150 ease-spring hover:bg-black/70 active:scale-90"
+            >
+              ✕
+            </button>
+
+            <h2 className="text-lg font-bold text-ink">Same as usual?</h2>
+            <p className="text-xs text-ink-faint -mt-3">One tap logs it. Macros come from your last log.</p>
+
+            <UsualsCard
+              viewedDate={currentDate}
+              refreshTrigger={refreshFeed}
+              onLog={async (u) => {
+                await logUsual(u)
+                setUsualsOpen(false)
+              }}
+            />
+          </div>
+        </div>
+      )}
       {textInputMode && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
           <div className="bg-surface border border-hair rounded-[22px] p-6 w-[90%] max-w-sm space-y-4 relative animate-fade-scale-in">
@@ -1315,20 +1315,17 @@ export default function Home() {
           </div>
         </div>
       )}
-
       <WorkoutLogger
         open={workoutLoggerOpen}
         onClose={() => setWorkoutLoggerOpen(false)}
         onSaved={handleWorkoutSaved}
         currentDate={currentDate}
       />
-
       <FridgeSuggest
         open={fridgeOpen}
         onClose={() => setFridgeOpen(false)}
         onLog={logFridgeSuggestion}
       />
-    </main>
   </div>
  )
 }
