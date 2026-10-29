@@ -327,13 +327,28 @@ export default function Home() {
 
   // Bring the pending review card into view whenever a new analysis lands —
   // a tapped suggestion opens it below the coach card, hidden below the fold.
+  // Offset by the sticky header's measured height: scrollIntoView with
+  // scroll-mt-4 (16px) used to slide the card UNDER the ~170px rings
+  // header, cutting off its top. Measuring at scroll time stays correct
+  // as the rings shrink on scroll; worst case the card lands a little
+  // lower, never underneath.
   useEffect(() => {
     if (analysis && reviewCardRef.current) {
       const el = reviewCardRef.current
       // Let the card mount and layout settle before scrolling to it.
-      const t = requestAnimationFrame(() =>
-        el.scrollIntoView({ behavior: "smooth", block: "start" })
-      )
+      const t = requestAnimationFrame(() => {
+        const header = document.getElementById("daily-summary-header")
+        if (!header) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" })
+          return
+        }
+        const top =
+          el.getBoundingClientRect().top +
+          window.scrollY -
+          header.offsetHeight -
+          12
+        window.scrollTo({ top, behavior: "smooth" })
+      })
       return () => cancelAnimationFrame(t)
     }
   }, [analysis])
