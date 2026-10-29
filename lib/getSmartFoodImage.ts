@@ -1,3 +1,5 @@
+import { dishKey } from "./photoLearning"
+
 /**
  * Food photo lookup — goes through our own /api/food-image proxy so the
  * Unsplash access key stays server-side (see app/api/food-image/route.ts).
@@ -205,4 +207,63 @@ export async function getSmartFoodImages(
     console.error("Food image lookup failed", err)
     return fallbackSet(mealName)
   }
+}
+
+/**
+ * Meal photo candidates — v1 of photo picker intelligence (backlog #27).
+ *
+ * - Single-item meals: unchanged whole-meal search. Her own photo of the
+ *   dish still leads for repeats (server-side exact-dish lookup).
+ * - Multi-item meals: one photo per item, ordered by item, capped at 4 —
+ *   no more hunting for one photo containing both "apple and beef stick".
+ *   Her own photo of the whole dish still leads when it exists (exact
+ *   dish repeat); the per-item photos follow it as alternatives.
+ * - Per-item searches carry a per-item dish key, so a past pick for that
+ *   item alone (e.g. a lone "apple" meal) still leads its item search.
+ * - `items` falls back to `foods` (fridge suggestions have no food_items;
+ *   their uses list IS the item list), then to the meal name alone.
+ */
+export async function getMealPhotoCandidates(
+  mealName: string,
+  items: string[] | undefined,
+  foods: string[] | undefined,
+  opts?: ImageLookupOpts
+): Promise<string[]> {
+  const clean = (list: string[] | undefined) =>
+    (list || [])
+      .map((s) => (typeof s === "string" ? s.trim() : ""))
+      .filter(Boolean)
+  const list = clean(items).length > 0 ? clean(items) : clean(foods)
+  if (list.length <= 1) {
+    return getSmartFoodImages(mealName, foods, opts)
+  }
+
+  // Whole-meal call only for the own-photo lead (needs the dish key);
+  // its stock results are discarded — per-item photos replace them.
+  const wholePromise = opts?.dishKey
+    ? getSmartFoodImages(mealName, foods, opts)
+    : Promise.resolve([] as string[])
+  const perItemPromises = list.slice(0, 4).map((item) =>
+    getSmartFoodImages(item, [item], {
+      dishKey: dishKey(item, [item]),
+      exclude: opts?.exclude,
+    })
+  )
+  const [whole, ...perItem] = await Promise.all([
+    wholePromise,
+    ...perItemPromises,
+  ])
+  const own = whole.find((u) => u.includes("/meal-photos/"))
+
+  const seen = new Set<string>()
+  const out: string[] = []
+  const push = (u?: string) => {
+    if (u && !seen.has(u)) {
+      seen.add(u)
+      out.push(u)
+    }
+  }
+  push(own)
+  for (const candidates of perItem) push(candidates[0])
+  return out.slice(0, 4)
 }

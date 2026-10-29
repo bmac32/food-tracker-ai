@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabase"
-import { getSmartFoodImages, fallbackSet } from "@/lib/getSmartFoodImage"
+import { getMealPhotoCandidates, fallbackSet } from "@/lib/getSmartFoodImage"
 import { dishKey } from "@/lib/photoLearning"
 import { normalizeFoodKey } from "@/lib/foodTruth"
 
@@ -300,8 +300,11 @@ export default function Home() {
       }
 
       // ✅ FIRST: get image candidates (swipeable picker)
-      const imageUrls = await getSmartFoodImages(
+      const imageUrls = await getMealPhotoCandidates(
         parsedAnalysis.meal_name,
+        (parsedAnalysis.food_items || []).map((f: any) =>
+          typeof f === "string" ? f : f?.item || ""
+        ),
         parsedAnalysis.foods,
         {
           imageQuery: parsedAnalysis.image_query,
@@ -386,8 +389,11 @@ export default function Home() {
         logged_from: "suggestion",
       }
 
-      const imageUrls = await getSmartFoodImages(
+      const imageUrls = await getMealPhotoCandidates(
         parsedAnalysis.meal_name,
+        (parsedAnalysis.food_items || []).map((f: any) =>
+          typeof f === "string" ? f : f?.item || ""
+        ),
         parsedAnalysis.foods,
         {
           imageQuery: parsedAnalysis.image_query,
@@ -420,7 +426,7 @@ export default function Home() {
     setAnalysisError(null)
 
     try {
-      const urls = await getSmartFoodImages(s.name, s.uses, {
+      const urls = await getMealPhotoCandidates(s.name, s.uses, s.uses, {
         dishKey: dishKey(s.name, s.uses),
       })
       setPhotoUrls(urls)
@@ -969,8 +975,11 @@ export default function Home() {
     }
     setAnalyzing(true)
     try {
-      const urls = await getSmartFoodImages(
+      const urls = await getMealPhotoCandidates(
         analysis.meal_name,
+        ((analysis as any)?.food_items || []).map((f: any) =>
+          typeof f === "string" ? f : f?.item || ""
+        ),
         analysis.foods,
         {
           imageQuery: analysis.image_query,
